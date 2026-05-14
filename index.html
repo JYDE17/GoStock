@@ -345,13 +345,6 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
     </div>
   </div>
 
-  <div class="nav-group">
-    <div class="nav-label" onclick="toggleNavGroup(this)">Catalogue<i class="ti ti-chevron-down nav-chevron"></i></div>
-    <div class="nav-group-items">
-      <div class="nav-item" onclick="nav('create',this)"><i class="ti ti-plus"></i>Créer article</div>
-    </div>
-  </div>
-
   <div class="nav-group" id="admin-nav" style="display:none">
     <div class="nav-label" onclick="toggleNavGroup(this)">Administration<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
@@ -851,11 +844,14 @@ function vProducts(c) {
   c.innerHTML=`<div class="table-card">
     <div class="table-toolbar">
       <div class="table-toolbar-title">Produits <span style="color:var(--text3);font-size:12px">${list.length}/${products.length}</span></div>
-      <div class="filter-pills">
-        <div class="pill ${filterStatus==='all'?'active':''}"     onclick="setFilt('all',this)">Tous (${products.length})</div>
-        <div class="pill ${filterStatus==='instock'?'active':''}" onclick="setFilt('instock',this)">En stock (${products.filter(p=>getQty(p.id)>4).length})</div>
-        <div class="pill ${filterStatus==='low'?'active':''}"     onclick="setFilt('low',this)">Faible (${products.filter(p=>{const q=getQty(p.id);return q>0&&q<=4;}).length})</div>
-        <div class="pill ${filterStatus==='out'?'active':''}"     onclick="setFilt('out',this)">Rupture (${products.filter(p=>getQty(p.id)<=0).length})</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="filter-pills">
+          <div class="pill ${filterStatus==='all'?'active':''}"     onclick="setFilt('all',this)">Tous (${products.length})</div>
+          <div class="pill ${filterStatus==='instock'?'active':''}" onclick="setFilt('instock',this)">En stock (${products.filter(p=>getQty(p.id)>4).length})</div>
+          <div class="pill ${filterStatus==='low'?'active':''}"     onclick="setFilt('low',this)">Faible (${products.filter(p=>{const q=getQty(p.id);return q>0&&q<=4;}).length})</div>
+          <div class="pill ${filterStatus==='out'?'active':''}"     onclick="setFilt('out',this)">Rupture (${products.filter(p=>getQty(p.id)<=0).length})</div>
+        </div>
+        <button class="btn btn-primary" onclick="nav('create')"><i class="ti ti-plus"></i> Créer</button>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap">
@@ -1454,11 +1450,130 @@ async function showProd(id) {
       </div>
     </div>
   `, [
+    {label:'<i class="ti ti-pencil"></i> Modifier', cls:'btn-amber', action:`openEditProduct(${id})`},
     {label:'Réceptionner', cls:'btn-success', action:`closeModal();goTo('receive',${id})`},
     {label:'Transférer',   cls:'btn-primary', action:`closeModal();goTo('transfer',${id})`},
     {label:'Réduire',      cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
+    {label:'<i class=\"ti ti-trash\"></i> Supprimer', cls:'btn-danger', action:`confirmDeleteProduct(${id})`},
   ]);
 }
+
+function openEditProduct(id) {
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  openModal(`Modifier — ${p.name}`, `
+    <div class="form-section">Informations générales</div>
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="ep-name" type="text" class="form-input" value="${escHtml(p.name)}">
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Référence interne</label>
+        <input id="ep-ref" type="text" class="form-input" value="${escHtml(p.reference||'')}">
+      </div>
+      <div class="form-group"><label class="form-label">Code-barres</label>
+        <input id="ep-barcode" type="text" class="form-input" value="${escHtml(p.barcode||'')}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Catégorie</label>
+        <select id="ep-cat" class="form-input">
+          <option value="">— Aucune —</option>
+          ${categories.map(c=>`<option value="${c.id}" ${p.category_id===c.id?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Unité de mesure</label>
+        <select id="ep-uom" class="form-input">
+          <option value="">— Aucune —</option>
+          ${uoms.map(u=>`<option value="${u.id}" ${p.uom_id===u.id?'selected':''}>${escHtml(u.name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-section">Prix</div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Prix de vente (CAD)</label>
+        <input id="ep-price" type="number" min="0" step="0.01" class="form-input" value="${p.sale_price||0}">
+      </div>
+      <div class="form-group"><label class="form-label">Coût (CAD)</label>
+        <input id="ep-cost" type="number" min="0" step="0.01" class="form-input" value="${p.cost_price||0}">
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Description</label>
+      <textarea id="ep-desc" class="form-input" rows="2">${escHtml(p.description||'')}</textarea>
+    </div>
+  `, [
+    {label:'<i class="ti ti-check"></i> Sauvegarder', cls:'btn-primary', action:`submitEditProduct(${id})`},
+  ]);
+}
+
+async function submitEditProduct(id) {
+  const name     = document.getElementById('ep-name')?.value?.trim();
+  const ref      = document.getElementById('ep-ref')?.value?.trim() || null;
+  const barcode  = document.getElementById('ep-barcode')?.value?.trim() || null;
+  const catId    = parseInt(document.getElementById('ep-cat')?.value) || null;
+  const uomId    = parseInt(document.getElementById('ep-uom')?.value) || null;
+  const price    = parseFloat(document.getElementById('ep-price')?.value) || 0;
+  const cost     = parseFloat(document.getElementById('ep-cost')?.value) || 0;
+  const desc     = document.getElementById('ep-desc')?.value?.trim() || null;
+
+  if(!name){ toast('Le nom est obligatoire','error'); return; }
+
+  const { error } = await sb.from('products').update({
+    name, reference:ref, barcode, category_id:catId, uom_id:uomId,
+    sale_price:price, cost_price:cost, description:desc,
+    updated_at: new Date().toISOString()
+  }).eq('id', id);
+
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+
+  toast(`✓ "${name}" mis à jour`,'success');
+  closeModal();
+  await loadAll();
+  vProducts(document.getElementById('main-content'));
+}
+
+
+function confirmDeleteProduct(id) {
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  openModal('Supprimer ce produit ?', `
+    <div style="background:var(--red-dim);border:1px solid rgba(245,69,92,.3);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <i class="ti ti-alert-triangle" style="color:var(--red);font-size:20px"></i>
+        <span style="font-size:14px;font-weight:600;color:var(--red)">Action irréversible</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2)">
+        Tu vas supprimer <strong style="color:var(--text1)">${escHtml(p.name)}</strong> ainsi que tout son stock et ses mouvements associés.
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--text2)">Confirme en tapant le nom du produit :</div>
+    <input id="del-confirm-input" type="text" class="form-input" style="margin-top:10px" placeholder="${escHtml(p.name)}" oninput="document.getElementById('del-confirm-btn').disabled=this.value!=='${escHtml(p.name).replace(/'/g,"\\'")}'" >
+  `, [
+    {label:'<i class="ti ti-trash"></i> Supprimer définitivement', cls:'btn-danger', action:`deleteProduct(${id})`}
+  ]);
+  // Disable button by default until name matches
+  setTimeout(()=>{
+    const btn = document.querySelector('#modal-footer .btn-danger');
+    if(btn) btn.disabled = true;
+  }, 50);
+}
+
+async function deleteProduct(id) {
+  const p = products.find(x=>x.id===id);
+  try {
+    // Delete stock lines first
+    await sb.from('stock').delete().eq('product_id', id);
+    // Delete movements
+    await sb.from('movements').delete().eq('product_id', id);
+    // Delete product
+    const { error } = await sb.from('products').delete().eq('id', id);
+    if(error) throw error;
+    toast(`✓ "${p?.name}" supprimé`, 'success');
+    closeModal();
+    await loadAll();
+    vProducts(document.getElementById('main-content'));
+  } catch(e) { toast('Erreur: '+e.message, 'error'); }
+}
+
 
 function switchProdTab(tab) {
   document.getElementById('prodtab-details').style.display  = tab==='details' ? '' : 'none';
