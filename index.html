@@ -2029,7 +2029,7 @@ function saveThreshold() {
 // Load threshold on startup
 window._alertThreshold = parseInt(localStorage.getItem('goplex_alert_threshold')) || 4;
 
-
+async function vAuditLog(c) {
   c=c||document.getElementById('main-content');
   c.innerHTML='<div class="empty"><i class="ti ti-loader spin"></i></div>';
   const {data:logs}=await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(200);
