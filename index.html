@@ -21,11 +21,11 @@
   --font-head:'Syne',sans-serif;
   --font-mono:'DM Mono',monospace;
 }
-html,body{height:100%;background:var(--bg0);color:var(--text1);font-family:var(--font-head);font-size:14px;line-height:1.5}
-.app{display:flex;height:100vh;overflow:hidden}
+html,body{height:100%;background:var(--bg0);color:var(--text1);font-family:var(--font-head);font-size:14px;line-height:1.5;overflow:auto}
+.app{display:flex;min-height:100vh}
 .hidden{display:none!important}
 /* SIDEBAR */
-.sidebar{width:240px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+.sidebar{width:240px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:sticky;top:0;height:100vh}
 .logo{padding:20px 20px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
 .logo-icon{width:32px;height:32px;background:var(--blue);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0}
 .logo-text{font-size:15px;font-weight:700;letter-spacing:.02em}
@@ -38,8 +38,8 @@ html,body{height:100%;background:var(--bg0);color:var(--text1);font-family:var(-
 .nav-item.active{color:var(--blue);background:var(--blue-bg);border-left-color:var(--blue)}
 .nav-badge{margin-left:auto;font-size:10px;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-weight:600}
 /* MAIN */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-.topbar{height:56px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:12px;flex-shrink:0}
+.main{flex:1;display:flex;flex-direction:column;min-height:100vh}
+.topbar{height:56px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:12px;flex-shrink:0;position:sticky;top:0;z-index:50}
 .topbar-title{font-size:16px;font-weight:600;flex:1}
 .search-wrap{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0 12px;height:36px;width:260px}
 .search-wrap input{background:transparent;border:none;outline:none;color:var(--text1);font-size:13px;flex:1;font-family:var(--font-head)}
@@ -53,7 +53,7 @@ html,body{height:100%;background:var(--bg0);color:var(--text1);font-family:var(-
 .btn-success{background:var(--green-dim);border-color:var(--green);color:var(--green)}
 .btn-danger{background:var(--red-dim);border-color:var(--red);color:var(--red)}
 .btn-amber{background:var(--amber-dim);border-color:var(--amber);color:var(--amber)}
-.content{flex:1;overflow-y:auto;padding:24px}
+.content{flex:1;padding:24px}
 /* STATS */
 .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
 .stat-card{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px;position:relative;overflow:hidden}
@@ -205,25 +205,11 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
       <p>Connectez-vous pour accéder à votre inventaire</p>
     </div>
     <div class="auth-body" style="padding:28px 32px">
-      <div class="auth-tabs">
-        <div class="auth-tab active" onclick="authTab('login',this)">Connexion</div>
-        <div class="auth-tab" onclick="authTab('signup',this)">Créer un compte</div>
-      </div>
       <div class="auth-err" id="auth-err"></div>
       <div id="form-login">
         <input id="l-email" class="auth-input" type="email" placeholder="Adresse courriel" onkeydown="if(event.key==='Enter')doLogin()">
         <input id="l-pw"    class="auth-input" type="password" placeholder="Mot de passe" onkeydown="if(event.key==='Enter')doLogin()">
         <button class="auth-btn" id="l-btn" onclick="doLogin()">Se connecter</button>
-        <div style="text-align:center;font-size:11px;color:var(--text3);margin:14px 0">ou</div>
-        <button class="auth-btn" style="background:var(--bg2);border:1px solid var(--border);color:var(--text1);margin-top:0" onclick="doMagicLink()">
-          <i class="ti ti-mail" style="margin-right:6px"></i>Lien magique par courriel
-        </button>
-      </div>
-      <div id="form-signup" style="display:none">
-        <input id="s-name"  class="auth-input" type="text" placeholder="Nom complet">
-        <input id="s-email" class="auth-input" type="email" placeholder="Adresse courriel">
-        <input id="s-pw"    class="auth-input" type="password" placeholder="Mot de passe (min 8 car.)" onkeydown="if(event.key==='Enter')doSignup()">
-        <button class="auth-btn" id="s-btn" onclick="doSignup()">Créer mon compte</button>
       </div>
     </div>
     <div class="auth-footer">GoPlex © 2025 · Sans Odoo · 100% vos données</div>
@@ -263,6 +249,7 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
     <div class="nav-label">Administration</div>
     <div class="nav-item" onclick="nav('csvimport',this)"><i class="ti ti-file-import"></i>Import CSV Odoo<span class="nav-badge" id="migrate-badge" style="background:var(--amber);display:none">!</span></div>
     <div class="nav-item" onclick="nav('users',this)"><i class="ti ti-users"></i>Utilisateurs</div>
+    <div class="nav-item" onclick="nav('settings',this)"><i class="ti ti-settings"></i>Paramètres</div>
     <div class="nav-item" onclick="nav('auditlog',this)"><i class="ti ti-list-check"></i>Journal d'audit</div>
   </div>
   <div class="nav-group">
@@ -375,7 +362,7 @@ const ODOO_KEY = 'bafd7fb3d9da3b8fba687789750048e785aa1a42';
 let user = null, profile = null;
 let products = [], locations = [], categories = [], uoms = [], movements = [];
 let stockMap = {};        // productId -> { total, byLocation: [{locId,qty}] }
-let currentView = 'dashboard', filterStatus = 'all', searchQ = '';
+let currentView = 'dashboard', filterStatus = 'all', filterCat = 'all', searchQ = '';
 let bcFoundProduct = null, bcStream = null, bcInterval = null;
 
 // ══════════════════════════════════════════════════════════
@@ -517,9 +504,10 @@ async function loadAll() {
 
 function getQty(pid) { return stockMap[pid]?.total || 0; }
 function getStatus(qty) {
-  if(qty<=0)  return {label:'Rupture',    color:'red',   key:'out'};
-  if(qty<=4)  return {label:'Stock faible',color:'amber', key:'low'};
-  return             {label:'En stock',   color:'green', key:'instock'};
+  const threshold = window._alertThreshold || 4;
+  if(qty<=0)         return {label:'Rupture',     color:'red',   key:'out'};
+  if(qty<=threshold) return {label:'Stock faible', color:'amber', key:'low'};
+  return                    {label:'En stock',     color:'green', key:'instock'};
 }
 function updateAlerts() {
   const cnt = products.filter(p=>getQty(p.id)<=4).length;
@@ -539,7 +527,8 @@ function nav(view, el) {
   const titles={dashboard:'Vue d\'ensemble',alerts:'Alertes',products:'Produits',
     locations:'Emplacements',movements:'Mouvements',receive:'Réceptionner',
     transfer:'Transfert',reduce:'Réduire stock',inventory:'Faire inventaire',
-    create:'Créer article',csvimport:'Import CSV depuis Odoo',users:'Utilisateurs',auditlog:'Journal d\'audit'};
+    create:'Créer article',csvimport:'Import CSV depuis Odoo',users:'Utilisateurs',
+    settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
 }
@@ -563,7 +552,7 @@ function renderView(v) {
   const map={dashboard:vDashboard,alerts:vAlerts,products:vProducts,
     locations:vLocations,movements:vMovements,receive:vReceive,
     transfer:vTransfer,reduce:vReduce,inventory:vInventory,
-    create:vCreate,csvimport:vCsvImport,users:vUsers,auditlog:vAuditLog};
+    create:vCreate,csvimport:vCsvImport,users:vUsers,settings:vSettings,auditlog:vAuditLog};
   (map[v]||vDashboard)(c);
 }
 function onSearch() {
@@ -669,6 +658,7 @@ function vProducts(c) {
   c=c||document.getElementById('main-content');
   let list=products;
   if(filterStatus!=='all') list=list.filter(p=>getStatus(getQty(p.id)).key===filterStatus);
+  if(filterCat!=='all') list=list.filter(p=>p.category_id==filterCat);
   if(searchQ) list=list.filter(p=>(p.name||'').toLowerCase().includes(searchQ)||(p.reference||'').toLowerCase().includes(searchQ)||(p.barcode||'').toLowerCase().includes(searchQ));
   c.innerHTML=`<div class="table-card">
     <div class="table-toolbar">
@@ -679,6 +669,11 @@ function vProducts(c) {
         <div class="pill ${filterStatus==='low'?'active':''}"     onclick="setFilt('low',this)">Faible (${products.filter(p=>{const q=getQty(p.id);return q>0&&q<=4;}).length})</div>
         <div class="pill ${filterStatus==='out'?'active':''}"     onclick="setFilt('out',this)">Rupture (${products.filter(p=>getQty(p.id)<=0).length})</div>
       </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg2);flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-right:4px">Catégorie</span>
+      <div class="pill ${filterCat==='all'?'active':''}" onclick="setCatFilt('all',this)">Toutes</div>
+      ${categories.map(cat=>`<div class="pill ${filterCat==cat.id?'active':''}" onclick="setCatFilt(${cat.id},this)">${escHtml(cat.name)} <span style="opacity:.6">(${products.filter(p=>p.category_id===cat.id).length})</span></div>`).join('')}
     </div>
     <table><thead><tr><th>Produit</th><th>Référence</th><th>Code-barres</th><th>Catégorie</th><th>Qté dispo</th><th>Prix vente</th><th>Coût</th><th>Statut</th></tr></thead>
     <tbody>${list.length?list.map(p=>{
@@ -698,6 +693,7 @@ function vProducts(c) {
     </tbody></table></div>`;
 }
 function setFilt(f,el){filterStatus=f;document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');vProducts(document.getElementById('main-content'));}
+function setCatFilt(id,el){filterCat=id;vProducts(document.getElementById('main-content'));}
 
 function vLocations(c) {
   const locTotals={};
@@ -1787,13 +1783,253 @@ async function vUsers(c) {
   </div>`;
 }
 async function changeRole(uid,role){const {error}=await sb.from('profiles').update({role}).eq('id',uid);if(error)toast('Erreur: '+error.message,'error');else toast('Rôle mis à jour → '+role,'success');}
-function openInvite(){openModal('Inviter un utilisateur',`<p style="font-size:13px;color:var(--text2);margin-bottom:16px">Partagez ce lien. Une fois inscrit, assignez-lui un rôle dans Utilisateurs.</p>
-  <div class="form-group"><label class="form-label">Lien de l'application</label>
-    <div style="display:flex;gap:8px"><input class="form-input" style="flex:1;font-family:var(--font-mono)" value="${window.location.origin}" readonly>
-    <button class="btn" onclick="navigator.clipboard.writeText('${window.location.origin}');toast('Copié !','success')"><i class="ti ti-copy"></i></button></div>
-  </div>`,[]);}
+function openInvite() {
+  openModal('Créer un nouvel utilisateur', `
+    <div class="form-group"><label class="form-label">Nom complet *</label><input id="inv-name" type="text" class="form-input" placeholder="Jean Tremblay"></div>
+    <div class="form-group"><label class="form-label">Adresse courriel *</label><input id="inv-email" type="email" class="form-input" placeholder="jean@goplex.com"></div>
+    <div class="form-group"><label class="form-label">Mot de passe temporaire *</label>
+      <div style="display:flex;gap:8px">
+        <input id="inv-pw" type="text" class="form-input" placeholder="min. 8 caractères" style="flex:1">
+        <button class="btn" onclick="document.getElementById('inv-pw').value=genPw()" title="Générer"><i class="ti ti-refresh"></i></button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">L'utilisateur devra changer son mot de passe à la première connexion</div>
+    </div>
+    <div class="form-group"><label class="form-label">Rôle</label>
+      <select id="inv-role" class="form-input">
+        <option value="viewer">Viewer — lecture seule</option>
+        <option value="manager">Manager — opérations stock</option>
+        <option value="admin">Admin — accès complet</option>
+      </select>
+    </div>
+  `, [{label:'Créer le compte', cls:'btn-primary', action:'submitCreateUser()'}]);
+}
 
-async function vAuditLog(c) {
+function genPw() {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+  return Array.from({length:12}, ()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+
+async function submitCreateUser() {
+  const name  = document.getElementById('inv-name')?.value?.trim();
+  const email = document.getElementById('inv-email')?.value?.trim();
+  const pw    = document.getElementById('inv-pw')?.value?.trim();
+  const role  = document.getElementById('inv-role')?.value;
+  if(!name||!email||!pw){ toast('Remplissez tous les champs','error'); return; }
+  if(pw.length < 8){ toast('Mot de passe trop court (min 8 car.)','error'); return; }
+  try {
+    // Create user via Supabase Auth Admin API — needs service role key
+    // Fallback: use signUp then update profile
+    const { data, error } = await sb.auth.signUp({ email, password: pw, options: { data: { full_name: name } } });
+    if(error) throw error;
+    // Update role if not viewer
+    if(data.user && role !== 'viewer') {
+      await sb.from('profiles').update({ role, full_name: name }).eq('id', data.user.id);
+    }
+    toast(`✓ Compte créé pour ${name} — mot de passe: ${pw}`, 'success');
+    closeModal();
+    vUsers(document.getElementById('main-content'));
+  } catch(e){ toast('Erreur: '+e.message, 'error'); }
+}
+
+// ══════════════════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════════════════
+async function vSettings(c) {
+  c = c || document.getElementById('main-content');
+  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
+
+  const { data: dbUoms  } = await sb.from('uoms').select('*').order('name');
+  const { data: dbCats  } = await sb.from('categories').select('*').order('name');
+
+  c.innerHTML = `
+  <div style="max-width:800px;display:flex;flex-direction:column;gap:20px">
+
+    <!-- ── UNITÉS DE MESURE ── -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title"><i class="ti ti-ruler" style="color:var(--blue);margin-right:8px"></i>Unités de mesure</div>
+        <button class="btn btn-primary" onclick="openAddUom()"><i class="ti ti-plus"></i> Ajouter</button>
+      </div>
+      <table>
+        <thead><tr><th>Nom</th><th>Utilisée par</th><th>Action</th></tr></thead>
+        <tbody id="uom-rows">
+          ${(dbUoms||[]).length ? (dbUoms||[]).map(u => {
+            const count = products.filter(p => p.uom_id === u.id).length;
+            return `<tr>
+              <td style="font-weight:500">${escHtml(u.name)}</td>
+              <td><span class="badge badge-${count>0?'blue':'gray'}">${count} produit${count!==1?'s':''}</span></td>
+              <td>
+                <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="editUom(${u.id},'${escHtml(u.name)}')"><i class="ti ti-pencil"></i></button>
+                <button class="btn btn-danger" style="height:28px;padding:0 10px;font-size:12px;margin-left:4px" onclick="deleteUom(${u.id},${count})"${count>0?' disabled title="Utilisée par des produits"':''}><i class="ti ti-trash"></i></button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="3" class="empty" style="padding:24px">Aucune unité — ajoutez-en une</td></tr>'}
+        </tbody>
+      </table>
+      <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
+        Exemples : unité, kg, litre, boîte, caisse, rouleau, paire, mètre…
+      </div>
+    </div>
+
+    <!-- ── CATÉGORIES ── -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title"><i class="ti ti-tag" style="color:var(--amber);margin-right:8px"></i>Catégories de produits</div>
+        <button class="btn btn-primary" onclick="openAddCat()"><i class="ti ti-plus"></i> Ajouter</button>
+      </div>
+      <table>
+        <thead><tr><th>Nom</th><th>Produits</th><th>Action</th></tr></thead>
+        <tbody id="cat-rows">
+          ${(dbCats||[]).length ? (dbCats||[]).map(cat => {
+            const count = products.filter(p => p.category_id === cat.id).length;
+            return `<tr>
+              <td style="font-weight:500">${escHtml(cat.name)}</td>
+              <td><span class="badge badge-${count>0?'amber':'gray'}">${count} produit${count!==1?'s':''}</span></td>
+              <td>
+                <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="editCat(${cat.id},'${escHtml(cat.name)}')"><i class="ti ti-pencil"></i></button>
+                <button class="btn btn-danger" style="height:28px;padding:0 10px;font-size:12px;margin-left:4px" onclick="deleteCat(${cat.id},${count})"${count>0?' disabled title="Utilisée par des produits"':''}><i class="ti ti-trash"></i></button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="3" class="empty" style="padding:24px">Aucune catégorie</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── SEUIL D'ALERTE STOCK ── -->
+    <div class="table-card" style="padding:20px 24px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <i class="ti ti-bell" style="font-size:20px;color:var(--amber)"></i>
+        <div>
+          <div style="font-size:14px;font-weight:600">Seuil d'alerte stock faible</div>
+          <div style="font-size:12px;color:var(--text3)">En dessous de cette quantité, un produit apparaît en alerte</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input id="threshold-val" type="number" min="1" max="100" class="form-input" style="width:100px" value="${window._alertThreshold||4}">
+        <span style="font-size:13px;color:var(--text2)">unités</span>
+        <button class="btn btn-primary" onclick="saveThreshold()"><i class="ti ti-check"></i> Sauvegarder</button>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+// ── UOM CRUD ──────────────────────────────────────────────
+function openAddUom() {
+  openModal('Ajouter une unité de mesure', `
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="uom-name" type="text" class="form-input" placeholder="ex: kg, litre, boîte, caisse…">
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+      ${['unité','kg','g','litre','ml','boîte','caisse','rouleau','paire','mètre','cm','palette'].map(s=>
+        `<span style="padding:3px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:20px;font-size:12px;cursor:pointer" onclick="document.getElementById('uom-name').value='${s}'">${s}</span>`
+      ).join('')}
+    </div>
+  `, [{label:'Ajouter', cls:'btn-primary', action:'submitAddUom()'}]);
+}
+
+async function submitAddUom() {
+  const name = document.getElementById('uom-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  const { error } = await sb.from('uoms').insert({ name });
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast(`✓ Unité "${name}" ajoutée`,'success');
+  closeModal();
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+function editUom(id, currentName) {
+  openModal('Modifier l\'unité', `
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="uom-edit-name" type="text" class="form-input" value="${escHtml(currentName)}">
+    </div>
+  `, [{label:'Sauvegarder', cls:'btn-primary', action:`submitEditUom(${id})`}]);
+}
+
+async function submitEditUom(id) {
+  const name = document.getElementById('uom-edit-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  const { error } = await sb.from('uoms').update({ name }).eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast(`✓ Unité mise à jour`,'success');
+  closeModal();
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+async function deleteUom(id, count) {
+  if(count > 0){ toast('Impossible — utilisée par des produits','error'); return; }
+  if(!confirm('Supprimer cette unité ?')) return;
+  const { error } = await sb.from('uoms').delete().eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast('Unité supprimée','success');
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+// ── CATEGORY CRUD ─────────────────────────────────────────
+function openAddCat() {
+  openModal('Ajouter une catégorie', `
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="cat-name" type="text" class="form-input" placeholder="ex: Breuvage, Karting, Maintenance…">
+    </div>
+  `, [{label:'Ajouter', cls:'btn-primary', action:'submitAddCat()'}]);
+}
+
+async function submitAddCat() {
+  const name = document.getElementById('cat-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  const { error } = await sb.from('categories').insert({ name });
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast(`✓ Catégorie "${name}" ajoutée`,'success');
+  closeModal();
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+function editCat(id, currentName) {
+  openModal('Modifier la catégorie', `
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="cat-edit-name" type="text" class="form-input" value="${escHtml(currentName)}">
+    </div>
+  `, [{label:'Sauvegarder', cls:'btn-primary', action:`submitEditCat(${id})`}]);
+}
+
+async function submitEditCat(id) {
+  const name = document.getElementById('cat-edit-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  const { error } = await sb.from('categories').update({ name }).eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast(`✓ Catégorie mise à jour`,'success');
+  closeModal();
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+async function deleteCat(id, count) {
+  if(count > 0){ toast('Impossible — des produits utilisent cette catégorie','error'); return; }
+  if(!confirm('Supprimer cette catégorie ?')) return;
+  const { error } = await sb.from('categories').delete().eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast('Catégorie supprimée','success');
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+// ── ALERT THRESHOLD ───────────────────────────────────────
+function saveThreshold() {
+  const val = parseInt(document.getElementById('threshold-val')?.value) || 4;
+  window._alertThreshold = val;
+  localStorage.setItem('goplex_alert_threshold', val);
+  toast(`✓ Seuil d'alerte : ${val} unités`,'success');
+  updateAlerts();
+}
+
+// Load threshold on startup
+window._alertThreshold = parseInt(localStorage.getItem('goplex_alert_threshold')) || 4;
+
+
   c=c||document.getElementById('main-content');
   c.innerHTML='<div class="empty"><i class="ti ti-loader spin"></i></div>';
   const {data:logs}=await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(200);
