@@ -2,7 +2,12 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GoPlex">
+<meta name="theme-color" content="#0e0f11">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234a9eff'/><text y='.9em' font-size='70' x='50%' text-anchor='middle'>📦</text></svg>">
 <title>GoPlex Inventaire</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -114,6 +119,47 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
 .detail-cell-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:3px}
 .detail-cell-value{font-size:14px;font-weight:500}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--bg1)}
+/* ── MOBILE ── */
+@media(max-width:768px){
+  .app{flex-direction:column}
+  .sidebar{width:100%;height:auto;position:fixed;bottom:0;top:auto;border-right:none;border-top:1px solid var(--border);z-index:100;flex-direction:row;overflow-x:auto;overflow-y:hidden;padding:0;background:var(--bg1)}
+  .logo{display:none}
+  .nav-group{padding:0;display:flex;flex-direction:row;flex-shrink:0}
+  .nav-label{display:none}
+  .nav-group-items{display:flex!important;flex-direction:row;max-height:none!important;opacity:1!important;overflow:visible}
+  .nav-group-items.collapsed{max-height:none!important;opacity:1!important}
+  .nav-item{flex-direction:column;gap:2px;padding:8px 10px;font-size:9px;text-align:center;border-left:none;border-top:2px solid transparent;min-width:58px;position:relative}
+  .nav-item i{font-size:20px}
+  .nav-item.active{border-left:none;border-top-color:var(--blue);background:var(--blue-bg)}
+  .main{margin-bottom:72px}
+  .topbar{padding:0 12px;gap:6px;height:50px}
+  .topbar-title{font-size:14px}
+  .search-wrap{width:130px;padding:0 8px;height:32px}
+  .search-wrap input{font-size:12px}
+  .btn{padding:0 10px;height:32px;font-size:12px}
+  .content{padding:10px}
+  .stats-row{grid-template-columns:repeat(2,1fr)!important}
+  table{font-size:12px}
+  thead th{padding:7px 8px;font-size:10px}
+  td{padding:7px 8px}
+  .modal{width:96vw;max-height:90vh;border-radius:16px}
+  .detail-grid{grid-template-columns:1fr 1fr}
+  .table-toolbar{flex-wrap:wrap;gap:8px}
+  .filter-pills{flex-wrap:wrap}
+}
+/* Mobile inventory cards */
+.inv-mobile-card{background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px;transition:border-color .15s}
+.inv-mobile-card.has-value{border-color:var(--blue)}
+.inv-mobile-name{font-size:14px;font-weight:600;margin-bottom:2px}
+.inv-mobile-meta{font-size:11px;color:var(--text3)}
+.inv-mobile-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+.inv-mobile-stock{flex:1;font-size:13px;color:var(--text2)}
+.inv-mobile-stock strong{color:var(--text1);font-family:var(--font-mono)}
+.inv-mobile-input{width:90px;height:48px;font-size:22px;text-align:center;background:var(--bg2);border:2px solid var(--border);border-radius:10px;color:var(--text1);font-family:var(--font-mono);outline:none;-webkit-appearance:textfield}
+.inv-mobile-input:focus{border-color:var(--blue)}
+.inv-mobile-diff{font-size:13px;font-weight:700;font-family:var(--font-mono);width:54px;text-align:right}
+@media(min-width:769px){.inv-mobile-card{display:none!important}}
+@media(max-width:768px){.inv-desktop-table{display:none!important}}
 /* BARCODE */
 .bc-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:500;display:none;flex-direction:column;align-items:center;justify-content:center}
 .bc-overlay.show{display:flex}
@@ -526,11 +572,12 @@ async function loadAll() {
 }
 
 function getQty(pid) { return stockMap[pid]?.total || 0; }
-function getStatus(qty) {
-  const threshold = window._alertThreshold || 4;
-  if(qty<=0)         return {label:'Rupture',     color:'red',   key:'out'};
+function getStatus(qty, productId) {
+  const p = productId ? products.find(x=>x.id===productId) : null;
+  const threshold = (p?.alert_threshold != null) ? p.alert_threshold : (window._alertThreshold || 4);
+  if(qty<=0)         return {label:'Rupture',      color:'red',   key:'out'};
   if(qty<=threshold) return {label:'Stock faible', color:'amber', key:'low'};
-  return                    {label:'En stock',     color:'green', key:'instock'};
+  return                    {label:'En stock',      color:'green', key:'instock'};
 }
 function updateAlerts() {
   const cnt = products.filter(p=>getQty(p.id)<=4).length;
@@ -563,12 +610,16 @@ function goTo(view, pid) {
     const sel=document.getElementById(m[view]);
     if(sel){sel.value=pid;(cb[view]||function(){})();}
     if(view==='inventory'){
-      const r=document.getElementById('inv-qty-'+pid);
-      if(r){r.scrollIntoView({behavior:'smooth',block:'center'});r.focus();
-        const row=document.getElementById('inv-row-'+pid);
-        if(row){row.style.background='var(--blue-bg)';setTimeout(()=>row.style.background='',2500);}}
+      const input=document.getElementById('inv-qty-'+pid);
+      // Mobile card
+      const mobileRow=document.getElementById('inv-row-'+pid);
+      // Desktop row
+      const desktopRow=document.getElementById('inv-row-d-'+pid);
+      const row = mobileRow || desktopRow;
+      if(row){row.scrollIntoView({behavior:'smooth',block:'center'});row.style.borderColor='var(--blue)';row.style.background='var(--blue-bg)';setTimeout(()=>{row.style.borderColor='';row.style.background='';},2500);}
+      if(input){input.focus();input.select();}
     }
-  }, 100);
+  }, 150);
 }
 function renderView(v) {
   const c = document.getElementById('main-content');
@@ -667,7 +718,7 @@ function alertRows(limit=999) {
   const alerts=products.filter(p=>getQty(p.id)<=4).slice(0,limit);
   if(!alerts.length) return '<div class="empty" style="padding:24px"><i class="ti ti-check" style="color:var(--green)"></i>Aucune alerte</div>';
   return`<table><thead><tr><th>Produit</th><th>Réf.</th><th>Qté</th><th>Statut</th></tr></thead><tbody>
-    ${alerts.map(p=>{const s=getStatus(getQty(p.id));return`<tr onclick="showProd(${p.id})">
+    ${alerts.map(p=>{const s=getStatus(getQty(p.id), p.id);return`<tr onclick="showProd(${p.id})">
       <td style="font-weight:500">${escHtml(p.name)}</td>
       <td class="mono">${escHtml(p.reference||'—')}</td>
       <td style="font-family:var(--font-mono)">${Math.round(getQty(p.id))}</td>
@@ -680,7 +731,7 @@ function vAlerts(c){c.innerHTML=`<div class="table-card">${alertRows()}</div>`;}
 function vProducts(c) {
   c=c||document.getElementById('main-content');
   let list=products;
-  if(filterStatus!=='all') list=list.filter(p=>getStatus(getQty(p.id)).key===filterStatus);
+  if(filterStatus!=='all') list=list.filter(p=>getStatus(getQty(p.id), p.id).key===filterStatus);
   if(filterCat!=='all') list=list.filter(p=>p.category_id==filterCat);
   if(searchQ) list=list.filter(p=>(p.name||'').toLowerCase().includes(searchQ)||(p.reference||'').toLowerCase().includes(searchQ)||(p.barcode||'').toLowerCase().includes(searchQ));
   c.innerHTML=`<div class="table-card">
@@ -700,7 +751,7 @@ function vProducts(c) {
     </div>
     <table><thead><tr><th>Produit</th><th>Référence</th><th>Code-barres</th><th>Catégorie</th><th>Qté dispo</th><th>Prix vente</th><th>Coût</th><th>Statut</th></tr></thead>
     <tbody>${list.length?list.map(p=>{
-      const qty=getQty(p.id), s=getStatus(qty);
+      const qty=getQty(p.id), s=getStatus(qty, p.id);
       const cat=categories.find(c=>c.id===p.category_id);
       return`<tr onclick="showProd(${p.id})">
         <td style="font-weight:500">${escHtml(p.name)}</td>
@@ -1010,7 +1061,45 @@ async function submitReduce() {
 }
 
 function vInventory(c) {
-  c.innerHTML=`<div class="table-card">
+  c = c || document.getElementById('main-content');
+  const isMobile = window.innerWidth <= 768;
+
+  c.innerHTML = `
+  <!-- MOBILE VERSION -->
+  <div style="display:none" class="inv-mobile-list" id="inv-mobile-wrap">
+    <!-- Scanner en haut -->
+    <div style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:600"><i class="ti ti-barcode" style="color:var(--blue);margin-right:6px"></i>Scanner un article</div>
+        <button class="btn btn-primary" onclick="submitInventory()" style="height:36px"><i class="ti ti-check"></i> Valider tout</button>
+      </div>
+      <button onclick="openBarcodeScanner('inventory')" style="width:100%;height:48px;background:var(--blue);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;font-family:var(--font-head);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <i class="ti ti-camera" style="font-size:20px"></i> Ouvrir la caméra
+      </button>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0 10px;height:40px">
+        <i class="ti ti-search" style="color:var(--text3)"></i>
+        <input id="inv-search" type="text" placeholder="Rechercher un article…" oninput="filterInv()" style="flex:1;background:transparent;border:none;outline:none;color:var(--text1);font-size:13px;font-family:var(--font-head)">
+      </div>
+    </div>
+    <!-- Cards produits -->
+    <div id="inv-mobile-cards">
+      ${products.map(p=>`
+      <div class="inv-mobile-card" id="inv-row-${p.id}">
+        <div class="inv-mobile-name">${escHtml(p.name)}</div>
+        <div class="inv-mobile-meta">${p.reference?'REF: '+p.reference+' · ':''}<span class="badge badge-${getStatus(getQty(p.id),p.id).color}" style="font-size:10px">${getStatus(getQty(p.id),p.id).label}</span></div>
+        <div class="inv-mobile-row">
+          <div class="inv-mobile-stock">Stock actuel : <strong>${Math.round(getQty(p.id))}</strong></div>
+          <input class="inv-mobile-input" id="inv-qty-${p.id}" type="number" inputmode="numeric" pattern="[0-9]*" min="0" step="1" placeholder="—"
+            oninput="calcDiff(${p.id});this.closest('.inv-mobile-card').classList.toggle('has-value',this.value!=='')"
+            onfocus="this.select()">
+          <div class="inv-mobile-diff" id="inv-diff-${p.id}">—</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>
+
+  <!-- DESKTOP VERSION -->
+  <div class="table-card inv-desktop-table">
     <div class="table-toolbar">
       <div class="table-toolbar-title"><i class="ti ti-clipboard-list" style="color:var(--purple);margin-right:6px"></i>Inventaire physique</div>
       <div style="display:flex;gap:8px">
@@ -1020,15 +1109,15 @@ function vInventory(c) {
     </div>
     <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border)">
       <i class="ti ti-search" style="color:var(--text3)"></i>
-      <input id="inv-search" type="text" placeholder="Filtrer…" oninput="filterInv()" style="flex:1;background:transparent;border:none;outline:none;color:var(--text1);font-size:13px;font-family:var(--font-head)">
-      <span style="font-size:11px;color:var(--text3)">Saisissez les quantités réelles — champs vides ignorés</span>
+      <input id="inv-search-desktop" type="text" placeholder="Rechercher…" oninput="filterInvDesktop()" style="flex:1;background:transparent;border:none;outline:none;color:var(--text1);font-size:13px;font-family:var(--font-head)">
+      <span style="font-size:11px;color:var(--text3)">Champs vides ignorés</span>
     </div>
     <div style="padding:0 16px">
       <div style="display:grid;grid-template-columns:1fr 100px 80px 80px 80px;gap:8px;padding:10px 0;border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">
         <div>Produit</div><div style="text-align:center">Référence</div><div style="text-align:center">Stock DB</div><div style="text-align:center">Compté</div><div style="text-align:center">Diff.</div>
       </div>
       ${products.map(p=>`
-        <div class="inv-row" id="inv-row-${p.id}">
+        <div class="inv-row" id="inv-row-d-${p.id}">
           <div class="inv-name">${escHtml(p.name)}<div class="inv-ref">${p.reference||''}</div></div>
           <div style="width:80px;text-align:center;font-family:var(--font-mono);font-size:12px;color:var(--text2)">${Math.round(getQty(p.id))}</div>
           <div style="width:80px;text-align:center"><input class="inv-input" id="inv-qty-${p.id}" type="number" min="0" step="1" placeholder="—" oninput="calcDiff(${p.id})"></div>
@@ -1036,8 +1125,26 @@ function vInventory(c) {
         </div>`).join('')}
     </div>
   </div>`;
+
+  // Show correct version based on screen size
+  const mobileWrap = document.getElementById('inv-mobile-wrap');
+  if(mobileWrap) mobileWrap.style.display = isMobile ? 'block' : 'none';
 }
-function filterInv(){const q=(document.getElementById('inv-search')?.value||'').toLowerCase();products.forEach(p=>{const r=document.getElementById('inv-row-'+p.id);if(r)r.style.display=(!q||(p.name||'').toLowerCase().includes(q)||(p.reference||'').toLowerCase().includes(q))?'':'none';});}
+
+function filterInv() {
+  const q = (document.getElementById('inv-search')?.value||'').toLowerCase();
+  products.forEach(p=>{
+    const r = document.getElementById('inv-row-'+p.id);
+    if(r) r.style.display = (!q||(p.name||'').toLowerCase().includes(q)||(p.reference||'').toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
+function filterInvDesktop() {
+  const q = (document.getElementById('inv-search-desktop')?.value||'').toLowerCase();
+  products.forEach(p=>{
+    const r = document.getElementById('inv-row-d-'+p.id);
+    if(r) r.style.display = (!q||(p.name||'').toLowerCase().includes(q)||(p.reference||'').toLowerCase().includes(q)) ? '' : 'none';
+  });
+}
 function calcDiff(pid){const val=document.getElementById('inv-qty-'+pid)?.value;const d=document.getElementById('inv-diff-'+pid);if(!d)return;if(val===''||val===undefined){d.textContent='—';d.style.color='var(--text3)';return;}const diff=parseFloat(val)-getQty(pid);d.textContent=(diff>=0?'+':'')+Math.round(diff);d.style.color=diff>0?'var(--green)':diff<0?'var(--red)':'var(--text3)';}
 async function submitInventory() {
   let updates=0,errors=0;
@@ -1140,38 +1247,132 @@ async function submitCreate() {
 }
 
 // ── Product Detail Modal ───────────────────────────────────
-function showProd(id) {
-  const p=products.find(x=>x.id===id); if(!p) return;
-  const qty=getQty(id), s=getStatus(qty);
-  const cat=categories.find(c=>c.id===p.category_id);
-  const uom=uoms.find(u=>u.id===p.uom_id);
-  const locLines=(stockMap[id]?.byLocation||[]).map(b=>{
-    const l=locations.find(x=>x.id===b.locId);
-    return`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+async function showProd(id) {
+  const p = products.find(x=>x.id===id); if(!p) return;
+  const qty = getQty(id), s = getStatus(qty, id);
+  const cat = categories.find(c=>c.id===p.category_id);
+  const uom = uoms.find(u=>u.id===p.uom_id);
+  const threshold = p.alert_threshold ?? window._alertThreshold ?? 4;
+
+  const locLines = (stockMap[id]?.byLocation||[]).map(b=>{
+    const l = locations.find(x=>x.id===b.locId);
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
       <span style="color:var(--text2);font-size:12px">${escHtml(l?.name||'?')}</span>
       <span style="font-family:var(--font-mono);font-weight:600;color:var(--${b.qty>0?'green':'text3'})">${Math.round(b.qty)}</span>
     </div>`;
   }).join('');
-  openModal(`${p.name}`,`
-    <div class="detail-grid" style="margin-bottom:16px">
-      <div class="detail-cell"><div class="detail-cell-label">Référence</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${escHtml(p.reference||'—')}</div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Code-barres</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${escHtml(p.barcode||'—')}</div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Catégorie</div><div class="detail-cell-value">${escHtml(cat?.name||'—')}</div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Unité</div><div class="detail-cell-value">${escHtml(uom?.name||'—')}</div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Qté disponible</div><div class="detail-cell-value" style="font-size:20px;font-weight:700;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}</div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Statut</div><div class="detail-cell-value"><span class="badge badge-${s.color}">${s.label}</span></div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Prix vente</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.sale_price)}</div></div>
-      <div class="detail-cell"><div class="detail-cell-label">Coût</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.cost_price)}</div></div>
+
+  // Load history from Supabase
+  const { data: history } = await sb.from('movements')
+    .select('*').eq('product_id', id)
+    .order('created_at', {ascending: false}).limit(50);
+
+  const cols = {receive:'green', reduce:'red', transfer:'blue', inventory:'purple', import:'gray'};
+  const typeLabels = {receive:'Réception', reduce:'Sortie', transfer:'Transfert', inventory:'Inventaire', import:'Import'};
+
+  const historyRows = (history||[]).length ? (history||[]).map(m => {
+    const lf = locations.find(x=>x.id===m.location_from);
+    const lt = locations.find(x=>x.id===m.location_to);
+    const col = cols[m.movement_type]||'gray';
+    const isOut = m.movement_type==='reduce' || (m.movement_type==='transfer' && m.location_from);
+    return `<tr>
+      <td style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${m.created_at ? new Date(m.created_at).toLocaleString('fr-CA') : '—'}</td>
+      <td><span class="badge badge-${col}">${typeLabels[m.movement_type]||m.movement_type}</span></td>
+      <td style="font-family:var(--font-mono);font-weight:600;color:var(--${col})">${m.quantity>0&&m.movement_type!=='reduce'?'+':'−'}${Math.abs(m.quantity)}</td>
+      <td style="font-size:11px;color:var(--text2)">${escHtml(lf?.name||'')}${lf&&lt?' → ':''}${escHtml(lt?.name||'')}</td>
+      <td style="font-size:11px;color:var(--text3)">${escHtml(m.reference||'—')}</td>
+      <td style="font-size:11px;color:var(--text3)">${escHtml(m.user_email||'—')}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty" style="padding:24px">Aucun mouvement enregistré</td></tr>`;
+
+  openModal(p.name, `
+    <!-- ONGLETS -->
+    <div style="display:flex;gap:2px;background:var(--bg2);border-radius:8px;padding:4px;margin-bottom:16px">
+      <button id="tab-details" onclick="switchProdTab('details')" style="flex:1;padding:7px;border-radius:6px;border:none;font-family:var(--font-head);font-size:13px;font-weight:500;cursor:pointer;background:var(--bg1);color:var(--text1);transition:all .15s">
+        <i class="ti ti-info-circle" style="margin-right:5px"></i>Détails
+      </button>
+      <button id="tab-history" onclick="switchProdTab('history')" style="flex:1;padding:7px;border-radius:6px;border:none;font-family:var(--font-head);font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--text2);transition:all .15s">
+        <i class="ti ti-history" style="margin-right:5px"></i>Historique <span style="font-size:11px;opacity:.7">(${(history||[]).length})</span>
+      </button>
     </div>
-    ${locLines?`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Stock par emplacement</div>
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0 12px;margin-bottom:12px">${locLines}</div>`:''}
-    ${p.description?`<div style="font-size:13px;color:var(--text2);background:var(--bg2);border-radius:8px;padding:12px">${escHtml(p.description)}</div>`:''}
-  `,[
-    {label:'Réceptionner',cls:'btn-success',action:`closeModal();goTo('receive',${id})`},
-    {label:'Transférer',  cls:'btn-primary',action:`closeModal();goTo('transfer',${id})`},
-    {label:'Réduire',     cls:'btn-danger', action:`closeModal();goTo('reduce',${id})`},
+
+    <!-- TAB DÉTAILS -->
+    <div id="prodtab-details">
+      <div class="detail-grid" style="margin-bottom:16px">
+        <div class="detail-cell"><div class="detail-cell-label">Référence</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${escHtml(p.reference||'—')}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Code-barres</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${escHtml(p.barcode||'—')}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Catégorie</div><div class="detail-cell-value">${escHtml(cat?.name||'—')}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Unité</div><div class="detail-cell-value">${escHtml(uom?.name||'—')}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Qté disponible</div><div class="detail-cell-value" style="font-size:22px;font-weight:700;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Statut</div><div class="detail-cell-value"><span class="badge badge-${s.color}">${s.label}</span></div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Prix vente</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.sale_price)}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Coût</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.cost_price)}</div></div>
+      </div>
+
+      ${locLines ? `
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Stock par emplacement</div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0 12px;margin-bottom:16px">${locLines}</div>` : ''}
+
+      <!-- Seuil d'alerte personnalisé -->
+      <div style="background:var(--amber-dim);border:1px solid rgba(245,166,35,.25);border-radius:8px;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <i class="ti ti-bell" style="color:var(--amber);font-size:16px"></i>
+          <span style="font-size:13px;font-weight:600">Seuil d'alerte pour ce produit</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:auto">Seuil global : ${window._alertThreshold||4}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <input id="prod-threshold" type="number" min="0" max="9999" class="form-input" style="width:90px;text-align:center" value="${threshold}" placeholder="${window._alertThreshold||4}">
+          <span style="font-size:13px;color:var(--text2)">unités</span>
+          <button class="btn btn-amber" style="height:36px" onclick="saveProdThreshold(${id})"><i class="ti ti-check"></i> Sauvegarder</button>
+          <button class="btn" style="height:36px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Global</button>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">Laisse vide pour utiliser le seuil global (${window._alertThreshold||4} unités)</div>
+      </div>
+    </div>
+
+    <!-- TAB HISTORIQUE -->
+    <div id="prodtab-history" style="display:none">
+      <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+        <table style="min-width:500px">
+          <thead><tr><th>Date</th><th>Type</th><th>Qté</th><th>Emplacement</th><th>Réf.</th><th>Par</th></tr></thead>
+          <tbody>${historyRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `, [
+    {label:'Réceptionner', cls:'btn-success', action:`closeModal();goTo('receive',${id})`},
+    {label:'Transférer',   cls:'btn-primary', action:`closeModal();goTo('transfer',${id})`},
+    {label:'Réduire',      cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
   ]);
 }
+
+function switchProdTab(tab) {
+  document.getElementById('prodtab-details').style.display  = tab==='details' ? '' : 'none';
+  document.getElementById('prodtab-history').style.display  = tab==='history' ? '' : 'none';
+  document.getElementById('tab-details').style.background   = tab==='details' ? 'var(--bg1)' : 'transparent';
+  document.getElementById('tab-details').style.color        = tab==='details' ? 'var(--text1)' : 'var(--text2)';
+  document.getElementById('tab-history').style.background   = tab==='history' ? 'var(--bg1)' : 'transparent';
+  document.getElementById('tab-history').style.color        = tab==='history' ? 'var(--text1)' : 'var(--text2)';
+}
+
+async function saveProdThreshold(id) {
+  const val = document.getElementById('prod-threshold')?.value;
+  const threshold = val === '' ? null : parseInt(val);
+  const { error } = await sb.from('products').update({ alert_threshold: threshold }).eq('id', id);
+  if(error) {
+    // Column might not exist yet — add it
+    toast('Colonne manquante — voir console','error');
+    console.warn('Add column: ALTER TABLE public.products ADD COLUMN IF NOT EXISTS alert_threshold integer;');
+    return;
+  }
+  // Update local state
+  const p = products.find(x=>x.id===id);
+  if(p) p.alert_threshold = threshold;
+  updateAlerts();
+  toast(threshold !== null ? `✓ Seuil de ${threshold} unités pour ce produit` : '✓ Seuil global utilisé', 'success');
+}
+
+
 
 function showLoc(id) {
   const l=locations.find(x=>x.id===id); if(!l) return;
@@ -2160,7 +2361,7 @@ async function searchByBarcode(code) {
     return;
   }
   bcFoundProduct=found;
-  const qty=getQty(found.id), s=getStatus(qty);
+  const qty=getQty(found.id), s=getStatus(qty, found.id);
   document.getElementById('bc-pname').textContent=found.name;
   document.getElementById('bc-pref').textContent=found.reference?`REF: ${found.reference}`:'';
   document.getElementById('bc-pqty').textContent=`${Math.round(qty)}`;
@@ -2202,7 +2403,7 @@ function exportCSV() {
   products.forEach(p=>{
     const cat=categories.find(c=>c.id===p.category_id);
     const qty=getQty(p.id);
-    rows.push([p.name,p.reference||'',p.barcode||'',cat?.name||'',Math.round(qty),p.sale_price||0,p.cost_price||0,getStatus(qty).label]);
+    rows.push([p.name,p.reference||'',p.barcode||'',cat?.name||'',Math.round(qty),p.sale_price||0,p.cost_price||0,getStatus(qty, p.id).label]);
   });
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=document.createElement('a');
@@ -2216,6 +2417,11 @@ document.addEventListener('keydown',e=>{
 });
 
 // ══════════════════════════════════════════════════════════
+// Resize handler — switch inventory view on screen change
+window.addEventListener('resize', ()=>{
+  if(currentView==='inventory') vInventory(document.getElementById('main-content'));
+});
+
 // INIT
 // ══════════════════════════════════════════════════════════
 (async()=>{
