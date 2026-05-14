@@ -121,32 +121,75 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--bg1)}
 /* ── MOBILE ── */
 @media(max-width:768px){
-  .app{flex-direction:column}
-  .sidebar{width:100%;height:auto;position:fixed;bottom:0;top:auto;border-right:none;border-top:1px solid var(--border);z-index:100;flex-direction:row;overflow-x:auto;overflow-y:hidden;padding:0;background:var(--bg1)}
-  .logo{display:none}
-  .nav-group{padding:0;display:flex;flex-direction:row;flex-shrink:0}
-  .nav-label{display:none}
-  .nav-group-items{display:flex!important;flex-direction:row;max-height:none!important;opacity:1!important;overflow:visible}
-  .nav-group-items.collapsed{max-height:none!important;opacity:1!important}
-  .nav-item{flex-direction:column;gap:2px;padding:8px 10px;font-size:9px;text-align:center;border-left:none;border-top:2px solid transparent;min-width:58px;position:relative}
-  .nav-item i{font-size:20px}
-  .nav-item.active{border-left:none;border-top-color:var(--blue);background:var(--blue-bg)}
+  /* Hide desktop sidebar entirely */
+  .sidebar{display:none!important}
   .main{margin-bottom:72px}
   .topbar{padding:0 12px;gap:6px;height:50px}
-  .topbar-title{font-size:14px}
-  .search-wrap{width:130px;padding:0 8px;height:32px}
-  .search-wrap input{font-size:12px}
-  .btn{padding:0 10px;height:32px;font-size:12px}
+  .topbar-title{font-size:15px}
+  .search-wrap{width:140px;padding:0 10px;height:34px}
+  .search-wrap input{font-size:13px}
+  .btn{padding:0 10px;height:34px;font-size:12px}
   .content{padding:10px}
   .stats-row{grid-template-columns:repeat(2,1fr)!important}
   table{font-size:12px}
   thead th{padding:7px 8px;font-size:10px}
-  td{padding:7px 8px}
-  .modal{width:96vw;max-height:90vh;border-radius:16px}
+  td{padding:8px 8px}
+  .modal{width:96vw;max-height:92vh;border-radius:16px}
   .detail-grid{grid-template-columns:1fr 1fr}
   .table-toolbar{flex-wrap:wrap;gap:8px}
   .filter-pills{flex-wrap:wrap}
+  .toast-wrap{bottom:82px;right:12px;left:12px}
+  .toast{max-width:100%}
 }
+/* ── BOTTOM TAB BAR (mobile only) ── */
+.mobile-tabs{display:none}
+@media(max-width:768px){
+  .mobile-tabs{
+    display:flex;position:fixed;bottom:0;left:0;right:0;height:72px;
+    background:var(--bg1);border-top:1px solid var(--border);
+    z-index:200;padding:0 4px;padding-bottom:env(safe-area-inset-bottom);
+    align-items:center;justify-content:space-around
+  }
+  .mob-tab{
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:6px 12px;border-radius:10px;cursor:pointer;
+    color:var(--text3);transition:all .15s;flex:1;position:relative;
+    border:none;background:transparent;font-family:var(--font-head)
+  }
+  .mob-tab i{font-size:22px;transition:transform .15s}
+  .mob-tab span{font-size:10px;font-weight:500;letter-spacing:.01em}
+  .mob-tab.active{color:var(--blue)}
+  .mob-tab.active i{transform:scale(1.1)}
+  .mob-tab .mob-badge{
+    position:absolute;top:2px;right:8px;
+    background:var(--red);color:#fff;
+    font-size:9px;font-weight:700;
+    min-width:16px;height:16px;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    padding:0 4px
+  }
+}
+/* ── MORE SHEET (slides up from bottom) ── */
+.more-sheet-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+  z-index:300;backdrop-filter:blur(4px)
+}
+.more-sheet-overlay.show{display:block}
+.more-sheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--bg1);border-top:1px solid var(--border2);
+  border-radius:20px 20px 0 0;z-index:301;
+  padding:12px 0 calc(80px + env(safe-area-inset-bottom));
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1)
+}
+.more-sheet.show{transform:translateY(0)}
+.more-sheet-handle{width:36px;height:4px;background:var(--border2);border-radius:2px;margin:0 auto 16px}
+.more-sheet-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);padding:0 20px 10px;font-weight:600}
+.more-item{display:flex;align-items:center;gap:14px;padding:14px 20px;cursor:pointer;transition:background .1s;color:var(--text1)}
+.more-item:hover,.more-item:active{background:var(--bg2)}
+.more-item i{font-size:20px;width:28px;text-align:center}
+.more-item-label{font-size:15px;font-weight:500}
+.more-item-sub{font-size:12px;color:var(--text3);margin-top:1px}
 /* Mobile inventory cards */
 .inv-mobile-card{background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px;transition:border-color .15s}
 .inv-mobile-card.has-value{border-color:var(--blue)}
@@ -359,7 +402,77 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
 </div>
 </div>
 
-<!-- MODAL -->
+<!-- ══ MOBILE BOTTOM TAB BAR ════════════════════════════ -->
+<nav class="mobile-tabs" id="mobile-tabs">
+  <button class="mob-tab active" id="mobtab-dashboard" onclick="mobNav('dashboard',this)">
+    <i class="ti ti-layout-dashboard"></i><span>Accueil</span>
+  </button>
+  <button class="mob-tab" id="mobtab-products" onclick="mobNav('products',this)">
+    <i class="ti ti-package"></i><span>Produits</span>
+  </button>
+  <button class="mob-tab" id="mobtab-scan" onclick="openBarcodeScanner('general')">
+    <i class="ti ti-barcode" style="font-size:26px;color:var(--blue)"></i><span>Scanner</span>
+  </button>
+  <button class="mob-tab" id="mobtab-inventory" onclick="mobNav('inventory',this)">
+    <i class="ti ti-clipboard-list"></i><span>Inventaire</span>
+  </button>
+  <button class="mob-tab" id="mobtab-more" onclick="openMoreSheet()">
+    <i class="ti ti-dots"></i><span>Plus</span>
+    <div class="mob-badge hidden" id="more-badge">!</div>
+  </button>
+</nav>
+
+<!-- ══ MORE SHEET ══════════════════════════════════════ -->
+<div class="more-sheet-overlay" id="more-overlay" onclick="closeMoreSheet()"></div>
+<div class="more-sheet" id="more-sheet">
+  <div class="more-sheet-handle"></div>
+  <div class="more-sheet-title">Opérations</div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('receive')">
+    <i class="ti ti-truck-delivery" style="color:var(--green)"></i>
+    <div><div class="more-item-label">Réceptionner</div><div class="more-item-sub">Ajouter du stock</div></div>
+  </div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('transfer')">
+    <i class="ti ti-transfer" style="color:var(--blue)"></i>
+    <div><div class="more-item-label">Transfert</div><div class="more-item-sub">Déplacer entre emplacements</div></div>
+  </div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('reduce')">
+    <i class="ti ti-minus-vertical" style="color:var(--red)"></i>
+    <div><div class="more-item-label">Réduire stock</div><div class="more-item-sub">Sortie, vente, perte</div></div>
+  </div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('create')">
+    <i class="ti ti-plus" style="color:var(--amber)"></i>
+    <div><div class="more-item-label">Créer article</div><div class="more-item-sub">Nouveau produit</div></div>
+  </div>
+  <div class="more-sheet-title" style="margin-top:8px">Gestion</div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('locations')">
+    <i class="ti ti-map-pin" style="color:var(--purple)"></i>
+    <div><div class="more-item-label">Emplacements</div><div class="more-item-sub">Gérer les entrepôts</div></div>
+  </div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('movements')">
+    <i class="ti ti-arrows-exchange" style="color:var(--text2)"></i>
+    <div><div class="more-item-label">Mouvements</div><div class="more-item-sub">Historique complet</div></div>
+  </div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('alerts')">
+    <i class="ti ti-bell" style="color:var(--amber)"></i>
+    <div><div class="more-item-label">Alertes</div><div class="more-item-sub" id="more-alerts-sub">Stock faible</div></div>
+  </div>
+  <div class="more-sheet-title" id="more-admin-title" style="margin-top:8px;display:none">Administration</div>
+  <div class="more-item" id="more-settings" style="display:none" onclick="closeMoreSheet();mobNav('settings')">
+    <i class="ti ti-settings" style="color:var(--text2)"></i>
+    <div><div class="more-item-label">Paramètres</div><div class="more-item-sub">Catégories, unités, seuils</div></div>
+  </div>
+  <div class="more-item" id="more-users" style="display:none" onclick="closeMoreSheet();mobNav('users')">
+    <i class="ti ti-users" style="color:var(--blue)"></i>
+    <div><div class="more-item-label">Utilisateurs</div><div class="more-item-sub">Gérer les accès</div></div>
+  </div>
+  <div class="more-sheet-title" style="margin-top:8px">Compte</div>
+  <div class="more-item" onclick="closeMoreSheet();doSignOut()" style="color:var(--red)">
+    <i class="ti ti-logout" style="color:var(--red)"></i>
+    <div><div class="more-item-label" style="color:var(--red)">Se déconnecter</div><div class="more-item-sub" id="more-user-email">—</div></div>
+  </div>
+</div>
+
+
 <div class="overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-head">
@@ -601,6 +714,7 @@ function nav(view, el) {
     settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
+  syncMobTabs(view);
 }
 function goTo(view, pid) {
   nav(view);
@@ -2273,7 +2387,43 @@ async function vAuditLog(c) {
     </tbody></table></div>`;
 }
 
-// ── COLLAPSIBLE NAV ───────────────────────────────────────
+// ── MOBILE BOTTOM BAR ─────────────────────────────────────
+const MOB_TAB_MAP = {
+  dashboard:'mobtab-dashboard', products:'mobtab-products',
+  inventory:'mobtab-inventory'
+};
+
+function syncMobTabs(view) {
+  if(window.innerWidth > 768) return;
+  document.querySelectorAll('.mob-tab').forEach(t=>t.classList.remove('active'));
+  const tabId = MOB_TAB_MAP[view];
+  if(tabId) document.getElementById(tabId)?.classList.add('active');
+  else document.getElementById('mobtab-more')?.classList.add('active');
+}
+
+function mobNav(view) {
+  nav(view);
+  syncMobTabs(view);
+}
+
+function openMoreSheet() {
+  document.getElementById('more-overlay').classList.add('show');
+  setTimeout(()=>document.getElementById('more-sheet').classList.add('show'), 10);
+  const isAdmin = profile?.role === 'admin';
+  document.getElementById('more-admin-title').style.display = isAdmin ? '' : 'none';
+  document.getElementById('more-settings').style.display = isAdmin ? '' : 'none';
+  document.getElementById('more-users').style.display = isAdmin ? '' : 'none';
+  const alertCnt = products.filter(p=>getQty(p.id)<=(p.alert_threshold ?? window._alertThreshold ?? 4)).length;
+  document.getElementById('more-alerts-sub').textContent = alertCnt > 0 ? `${alertCnt} article(s) en alerte` : 'Aucune alerte';
+  document.getElementById('more-user-email').textContent = profile?.email || '—';
+}
+
+function closeMoreSheet() {
+  document.getElementById('more-sheet').classList.remove('show');
+  document.getElementById('more-overlay').classList.remove('show');
+}
+
+
 function toggleNavGroup(labelEl) {
   const items = labelEl.nextElementSibling;
   const isCollapsed = items.classList.contains('collapsed');
