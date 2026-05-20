@@ -121,27 +121,55 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
 .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--bg1)}
 /* ── MOBILE ── */
 @media(max-width:768px){
-  /* Hide desktop sidebar entirely */
   .sidebar{display:none!important}
-  .main{margin-bottom:72px}
-  .topbar{padding:0 12px;gap:6px;height:50px}
-  .topbar-title{font-size:15px}
-  .search-wrap{width:140px;padding:0 10px;height:34px}
+  html,body{overflow-x:hidden}
+  .app{display:block;min-height:100vh}
+  .main{display:flex;flex-direction:column;min-height:100vh;padding-bottom:72px}
+  .topbar{
+    padding:0 14px;gap:8px;height:52px;
+    position:sticky;top:0;z-index:50;
+  }
+  /* Hide desktop-only topbar items on mobile */
+  .topbar .btn:not(#mob-refresh),
+  .topbar .bc-btn,
+  .topbar .btn-primary,
+  #user-wrap{display:none!important}
+  /* Show only title + search + refresh on mobile */
+  .topbar-title{font-size:15px;font-weight:700}
+  .search-wrap{flex:1;width:auto;max-width:220px;padding:0 10px;height:36px}
   .search-wrap input{font-size:13px}
-  .btn{padding:0 10px;height:34px;font-size:12px}
-  .content{padding:10px}
-  .stats-row{grid-template-columns:repeat(2,1fr)!important}
-  table{font-size:12px}
-  thead th{padding:7px 8px;font-size:10px}
-  td{padding:8px 8px}
-  .modal{width:96vw;max-height:92vh;border-radius:16px}
+  .content{padding:10px;overflow-x:hidden}
+  /* Fix tables - scrollable horizontally */
+  .table-card{overflow:hidden}
+  table{font-size:12px;width:100%}
+  thead th{padding:7px 8px;font-size:10px;white-space:nowrap}
+  td{padding:8px 8px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Stats grid 2 cols */
+  .stats-row{grid-template-columns:repeat(2,1fr)!important;gap:8px}
+  .stat-num{font-size:22px}
+  /* Modal full width */
+  .modal{width:96vw;max-height:88vh;border-radius:16px;margin:0 auto}
   .detail-grid{grid-template-columns:1fr 1fr}
-  .table-toolbar{flex-wrap:wrap;gap:8px}
-  .filter-pills{flex-wrap:wrap}
+  /* Toolbar wraps */
+  .table-toolbar{flex-wrap:wrap;gap:8px;padding:10px 12px}
+  .filter-pills{flex-wrap:wrap;gap:4px}
+  .pill{font-size:11px;padding:3px 9px}
+  /* Toast above bottom bar */
   .toast-wrap{bottom:82px;right:12px;left:12px}
   .toast{max-width:100%}
+  /* Forms full width */
+  .form-row{grid-template-columns:1fr}
+  /* Loc grid 1 col */
+  [style*="grid-template-columns:repeat(3"]{grid-template-columns:1fr 1fr!important}
+  /* Dashboard grids */
+  [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important}
+  [style*="grid-template-columns:repeat(5"]{grid-template-columns:repeat(2,1fr)!important}
 }
-/* ── BOTTOM TAB BAR (mobile only) ── */
+#mob-refresh{display:none}
+@media(max-width:768px){
+  #mob-refresh{display:flex!important}
+  #desk-refresh{display:none!important}
+}
 .mobile-tabs{display:none}
 @media(max-width:768px){
   .mobile-tabs{
@@ -367,7 +395,8 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
   <div class="topbar">
     <div class="topbar-title" id="topbar-title">Vue d'ensemble</div>
     <div class="search-wrap"><i class="ti ti-search"></i><input id="global-search" placeholder="Rechercher…" oninput="onSearch()"></div>
-    <button class="btn" onclick="loadAll()"><i class="ti ti-refresh" id="refresh-icon"></i> Actualiser</button>
+    <button class="btn" id="mob-refresh" onclick="loadAll()" title="Actualiser"><i class="ti ti-refresh" id="refresh-icon"></i></button>
+    <button class="btn" onclick="loadAll()" style="display:none" id="desk-refresh"><i class="ti ti-refresh"></i> Actualiser</button>
     <button class="bc-btn" onclick="openBarcodeScanner('general')"><i class="ti ti-barcode"></i> Scanner</button>
     <button class="btn btn-primary" onclick="exportCSV()"><i class="ti ti-download"></i> CSV</button>
     <div style="position:relative" id="user-wrap">
@@ -2580,26 +2609,123 @@ function closeBc(){document.getElementById('bc-overlay').classList.remove('show'
 async function startCamera() {
   stopCamera();
   try {
-    bcStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}}});
-    const vid=document.getElementById('bc-video'); vid.srcObject=bcStream; await vid.play();
-    setBcStatus('<i class="ti ti-scan" style="font-size:16px"></i><span>Pointez vers un code-barres…</span>');
+    // iPhone needs specific constraints
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280, min: 640 },
+        height: { ideal: 720,  min: 480 },
+        focusMode: 'continuous',
+      }
+    };
+    try {
+      bcStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch(e) {
+      // Fallback — simpler constraints
+      bcStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    }
+    const vid = document.getElementById('bc-video');
+    vid.srcObject = bcStream;
+    vid.setAttribute('playsinline', true);
+    vid.setAttribute('autoplay', true);
+    vid.muted = true;
+    await vid.play();
+    setBcStatus('<i class="ti ti-loader spin" style="font-size:16px"></i><span>Initialisation…</span>');
     startDecodeLoop();
-  } catch(e){ setBcStatus('<i class="ti ti-camera-off" style="color:var(--amber);font-size:16px"></i><span style="color:var(--amber)">Caméra non disponible — saisie manuelle</span>'); }
+  } catch(e) {
+    setBcStatus('<i class="ti ti-camera-off" style="color:var(--amber);font-size:16px"></i><span style="color:var(--amber)">Caméra non disponible — utilise la saisie manuelle</span>');
+  }
 }
 function stopCamera(){if(bcInterval){clearInterval(bcInterval);bcInterval=null;}if(bcStream){bcStream.getTracks().forEach(t=>t.stop());bcStream=null;}}
-function startDecodeLoop() {
-  const vid=document.getElementById('bc-video'),cvs=document.getElementById('bc-canvas'),ctx=cvs.getContext('2d');
-  bcInterval=setInterval(async()=>{
-    if(vid.readyState<2) return;
-    cvs.width=vid.videoWidth; cvs.height=vid.videoHeight; ctx.drawImage(vid,0,0);
+async function startDecodeLoop() {
+  const vid = document.getElementById('bc-video');
+  const cvs = document.getElementById('bc-canvas');
+  const ctx = cvs.getContext('2d');
+
+  // Load ZXing if not already loaded
+  if(!window._zxingReader) {
+    setBcStatus('<i class="ti ti-loader spin" style="font-size:16px"></i><span>Chargement du décodeur…</span>');
     try {
-      if('BarcodeDetector' in window){
-        if(!window._bcd) window._bcd=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e']});
-        const bs=await window._bcd.detect(cvs);
-        if(bs.length){onBcDetected(bs[0].rawValue);return;}
+      await loadZXing();
+    } catch(e) {
+      setBcStatus('<i class="ti ti-alert-circle" style="color:var(--red);font-size:16px"></i><span style="color:var(--red)">Erreur décodeur — utilise la saisie manuelle</span>');
+      return;
+    }
+  }
+
+  setBcStatus('<i class="ti ti-scan" style="font-size:16px"></i><span>Pointez vers un code-barres…</span>');
+
+  bcInterval = setInterval(async () => {
+    if(vid.readyState < 2 || vid.paused) return;
+    try {
+      cvs.width  = vid.videoWidth;
+      cvs.height = vid.videoHeight;
+      ctx.drawImage(vid, 0, 0);
+
+      // Try native BarcodeDetector first (Chrome/Android)
+      if('BarcodeDetector' in window) {
+        if(!window._bcd) window._bcd = new BarcodeDetector({
+          formats:['ean_13','ean_8','code_128','code_39','qr_code','upc_a','upc_e','itf']
+        });
+        const bs = await window._bcd.detect(cvs);
+        if(bs.length) { onBcDetected(bs[0].rawValue); return; }
       }
-    } catch(e){}
-  },400);
+
+      // ZXing fallback (Safari iPhone)
+      if(window._zxingReader) {
+        const imgData = ctx.getImageData(0, 0, cvs.width, cvs.height);
+        const result  = await window._zxingReader.decodeFromImageData(imgData, cvs.width, cvs.height);
+        if(result) onBcDetected(result.getText());
+      }
+    } catch(e) { /* not found yet, keep scanning */ }
+  }, 300);
+}
+
+function loadZXing() {
+  return new Promise((resolve, reject) => {
+    if(window.ZXing) { initZXingReader(); resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js';
+    s.onload = () => { initZXingReader(); resolve(); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function initZXingReader() {
+  try {
+    const hints = new Map();
+    hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      window.ZXing.BarcodeFormat.EAN_13,
+      window.ZXing.BarcodeFormat.EAN_8,
+      window.ZXing.BarcodeFormat.CODE_128,
+      window.ZXing.BarcodeFormat.CODE_39,
+      window.ZXing.BarcodeFormat.QR_CODE,
+      window.ZXing.BarcodeFormat.UPC_A,
+      window.ZXing.BarcodeFormat.UPC_E,
+      window.ZXing.BarcodeFormat.ITF,
+      window.ZXing.BarcodeFormat.DATA_MATRIX,
+    ]);
+    hints.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
+    const reader = new window.ZXing.MultiFormatReader();
+    reader.setHints(hints);
+
+    // Wrap in an async-friendly interface
+    window._zxingReader = {
+      decodeFromImageData: (imageData, width, height) => {
+        return new Promise((resolve, reject) => {
+          try {
+            const lum    = new window.ZXing.RGBLuminanceSource(imageData.data, width, height);
+            const binary = new window.ZXing.BinaryBitmap(new window.ZXing.HybridBinarizer(lum));
+            const result = reader.decode(binary);
+            resolve(result);
+          } catch(e) { reject(e); }
+        });
+      }
+    };
+  } catch(e) {
+    window._zxingReader = null;
+  }
 }
 function onBcDetected(code) {
   const aim=document.querySelector('.bc-aim-inner');
