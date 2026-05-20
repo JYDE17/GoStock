@@ -977,15 +977,26 @@ function vMovements(c) {
 function vReceive(c) {
   const internalLocs=locations.filter(l=>l.usage==='internal');
   c.innerHTML=`<div style="max-width:600px"><div class="table-card" style="padding:24px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
       <div style="width:44px;height:44px;background:var(--green-dim);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
       <div><div style="font-size:16px;font-weight:600">Réception de marchandises</div><div style="font-size:12px;color:var(--text3)">Ajouter du stock à un emplacement</div></div>
     </div>
-    <div class="form-group">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <label class="form-label" style="margin:0">Produit *</label>
-        <button class="bc-btn" onclick="openBarcodeScanner('receive')"><i class="ti ti-barcode"></i> Scanner</button>
+
+    <!-- Scanner physique / recherche universelle -->
+    <div style="background:var(--bg2);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:18px">
+      <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-barcode" style="font-size:14px"></i> Scanner physique ou recherche
       </div>
+      <div style="display:flex;gap:8px">
+        <input id="recv-scanner" type="text" class="form-input" placeholder="Scannez ou tapez un code-barres / nom…" autocomplete="off"
+          oninput="scanSearch('recv')" onkeydown="if(event.key==='Enter'){event.preventDefault();scanConfirm('recv');}">
+        <button class="btn btn-primary" onclick="scanConfirm('recv')" style="flex-shrink:0"><i class="ti ti-search"></i></button>
+      </div>
+      <div id="recv-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Produit sélectionné *</label>
       <select id="recv-product" class="form-input" onchange="updateRecvInfo()">
         <option value="">-- Sélectionner --</option>
         ${products.map(p=>`<option value="${p.id}">${escHtml(p.name)}${p.reference?' ['+p.reference+']':''}</option>`).join('')}
@@ -1010,6 +1021,8 @@ function vReceive(c) {
       <button class="btn btn-success" onclick="submitReceive()"><i class="ti ti-check"></i> Valider</button>
     </div>
   </div></div>`;
+  // Auto-focus scanner input
+  setTimeout(()=>document.getElementById('recv-scanner')?.focus(), 100);
 }
 function updateRecvInfo() {
   const pid=parseInt(document.getElementById('recv-product').value);
@@ -1048,11 +1061,22 @@ function vTransfer(c) {
       <div style="width:44px;height:44px;background:var(--blue-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--blue)"><i class="ti ti-transfer"></i></div>
       <div><div style="font-size:16px;font-weight:600">Transfert d'emplacement</div><div style="font-size:12px;color:var(--text3)">Déplacer du stock</div></div>
     </div>
-    <div class="form-group">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <label class="form-label" style="margin:0">Produit *</label>
-        <button class="bc-btn" onclick="openBarcodeScanner('transfer')"><i class="ti ti-barcode"></i> Scanner</button>
+
+    <!-- Scanner physique -->
+    <div style="background:var(--bg2);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:18px">
+      <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-barcode" style="font-size:14px"></i> Scanner physique ou recherche
       </div>
+      <div style="display:flex;gap:8px">
+        <input id="tf-scanner" type="text" class="form-input" placeholder="Scannez ou tapez un code-barres / nom…" autocomplete="off"
+          oninput="scanSearch('tf')" onkeydown="if(event.key==='Enter'){event.preventDefault();scanConfirm('tf');}">
+        <button class="btn btn-primary" onclick="scanConfirm('tf')" style="flex-shrink:0"><i class="ti ti-search"></i></button>
+      </div>
+      <div id="tf-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Produit sélectionné *</label>
       <select id="tf-product" class="form-input" onchange="updateTfInfo()">
         <option value="">-- Produit --</option>
         ${products.filter(p=>getQty(p.id)>0).map(p=>`<option value="${p.id}">${escHtml(p.name)}${p.reference?' ['+p.reference+']':''}</option>`).join('')}
@@ -1139,15 +1163,26 @@ async function submitTransfer() {
 
 function vReduce(c) {
   c.innerHTML=`<div style="max-width:600px"><div class="table-card" style="padding:24px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
       <div style="width:44px;height:44px;background:var(--red-dim);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--red)"><i class="ti ti-minus-vertical"></i></div>
       <div><div style="font-size:16px;font-weight:600">Réduire le stock</div><div style="font-size:12px;color:var(--text3)">Retirer des unités (vente, perte, casse…)</div></div>
     </div>
-    <div class="form-group">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <label class="form-label" style="margin:0">Produit *</label>
-        <button class="bc-btn" onclick="openBarcodeScanner('reduce')"><i class="ti ti-barcode"></i> Scanner</button>
+
+    <!-- Scanner physique -->
+    <div style="background:var(--bg2);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:18px">
+      <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <i class="ti ti-barcode" style="font-size:14px"></i> Scanner physique ou recherche
       </div>
+      <div style="display:flex;gap:8px">
+        <input id="red-scanner" type="text" class="form-input" placeholder="Scannez ou tapez un code-barres / nom…" autocomplete="off"
+          oninput="scanSearch('red')" onkeydown="if(event.key==='Enter'){event.preventDefault();scanConfirm('red');}">
+        <button class="btn btn-primary" onclick="scanConfirm('red')" style="flex-shrink:0"><i class="ti ti-search"></i></button>
+      </div>
+      <div id="red-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Produit sélectionné *</label>
       <select id="red-product" class="form-input" onchange="updateRedInfo()">
         <option value="">-- Produit --</option>
         ${products.filter(p=>getQty(p.id)>0).map(p=>`<option value="${p.id}">${escHtml(p.name)}${p.reference?' ['+p.reference+']':''} — ${Math.round(getQty(p.id))} dispo</option>`).join('')}
@@ -1242,10 +1277,18 @@ function vInventory(c) {
     <div class="table-toolbar">
       <div class="table-toolbar-title"><i class="ti ti-clipboard-list" style="color:var(--purple);margin-right:6px"></i>Inventaire physique</div>
       <div style="display:flex;gap:8px">
-        <button class="bc-btn" onclick="openBarcodeScanner('inventory')"><i class="ti ti-barcode"></i> Scanner</button>
+        <button class="bc-btn" onclick="openBarcodeScanner('inventory')"><i class="ti ti-barcode"></i> Scanner cam.</button>
         <button class="btn btn-primary" onclick="submitInventory()"><i class="ti ti-check"></i> Valider</button>
       </div>
     </div>
+    <!-- Scanner physique inventaire -->
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--blue-bg);border-bottom:1px solid var(--blue)">
+      <i class="ti ti-barcode" style="color:var(--blue);font-size:16px;flex-shrink:0"></i>
+      <input id="inv-scanner" type="text" placeholder="Scanner ou taper un code-barres / nom → Enter pour localiser le produit…" autocomplete="off"
+        style="flex:1;background:transparent;border:none;outline:none;color:var(--text1);font-size:13px;font-family:var(--font-head)"
+        oninput="scanSearchInv()" onkeydown="if(event.key==='Enter'){event.preventDefault();scanInventory(this.value);this.value='';}">
+    </div>
+    <div id="inv-scanner-results" style="padding:0 16px;display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto"></div>
     <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--bg2);border-bottom:1px solid var(--border)">
       <i class="ti ti-search" style="color:var(--text3)"></i>
       <input id="inv-search-desktop" type="text" placeholder="Rechercher…" oninput="filterInvDesktop()" style="flex:1;background:transparent;border:none;outline:none;color:var(--text1);font-size:13px;font-family:var(--font-head)">
@@ -1269,6 +1312,8 @@ function vInventory(c) {
   const mobileWrap = document.getElementById('inv-mobile-wrap');
   if(mobileWrap) mobileWrap.style.display = isMobile ? 'block' : 'none';
 }
+
+function scanSearchInv(){const input=document.getElementById('inv-scanner');const results=document.getElementById('inv-scanner-results');if(!input||!results)return;const q=input.value.trim().toLowerCase();if(!q){results.innerHTML='';results.style.padding='0';return;}const matches=products.filter(p=>(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q||(p.barcode||'').toLowerCase().startsWith(q)||(p.reference||'').toLowerCase().startsWith(q)||(p.name||'').toLowerCase().includes(q)).slice(0,6);if(!matches.length){results.innerHTML='';return;}results.style.padding='8px 16px';results.innerHTML=matches.map(p=>{const qty=getQty(p.id),s=getStatus(qty,p.id);return`<div onclick="scanInventory('${escHtml(p.barcode||p.reference||p.name)}');document.getElementById('inv-scanner').value='';document.getElementById('inv-scanner-results').innerHTML='';document.getElementById('inv-scanner-results').style.padding='0';" style="display:flex;align-items:center;gap:10px;padding:6px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;cursor:pointer;margin-bottom:2px"><i class="ti ti-package" style="color:var(--text3);font-size:14px;flex-shrink:0"></i><div style="flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(p.name)}</div><span class="badge badge-${s.color}" style="font-size:9px;flex-shrink:0">${Math.round(qty)}</span></div>`;}).join('');}
 
 function filterInv() {
   const q = (document.getElementById('inv-search')?.value||'').toLowerCase();
@@ -2568,6 +2613,81 @@ function closeMoreSheet() {
 }
 
 
+// ══════════════════════════════════════════════════════════
+// SCANNER PHYSIQUE — recherche universelle
+// ══════════════════════════════════════════════════════════
+const SCAN_SELECT_MAP={recv:'recv-product',tf:'tf-product',red:'red-product'};
+const SCAN_UPDATE_MAP={recv:()=>updateRecvInfo(),tf:()=>updateTfInfo(),red:()=>updateRedInfo()};
+
+function scanSearch(prefix){
+  const input=document.getElementById(prefix+'-scanner');
+  const results=document.getElementById(prefix+'-scan-results');
+  if(!input||!results)return;
+  const q=input.value.trim().toLowerCase();
+  if(!q){results.innerHTML='';return;}
+  const matches=products.filter(p=>
+    (p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q||
+    (p.barcode||'').toLowerCase().startsWith(q)||(p.reference||'').toLowerCase().startsWith(q)||
+    (p.name||'').toLowerCase().includes(q)
+  ).slice(0,8);
+  if(!matches.length){results.innerHTML=`<div style="font-size:12px;color:var(--text3);padding:4px 0">Aucun résultat</div>`;return;}
+  results.innerHTML=matches.map(p=>{
+    const qty=getQty(p.id),s=getStatus(qty,p.id);
+    const exact=(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q;
+    return`<div onclick="scanSelect('${prefix}',${p.id})" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg${exact?'1':'2'});border:1px solid var(--${exact?'blue':'border'});border-radius:8px;cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='var(--bg${exact?'1':'2'})'">
+      <i class="ti ti-${exact?'circle-check':'package'}" style="color:var(--${exact?'blue':'text3'});font-size:16px;flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:${exact?600:400};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(p.name)}</div>
+        <div style="font-size:11px;color:var(--text3)">${p.reference?'REF: '+p.reference+' · ':''}${p.barcode?'CB: '+p.barcode:''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--font-mono);font-size:13px;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}</div>
+        <span class="badge badge-${s.color}" style="font-size:9px">${s.label}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function scanSelect(prefix,productId){
+  const sel=document.getElementById(SCAN_SELECT_MAP[prefix]);
+  const input=document.getElementById(prefix+'-scanner');
+  const results=document.getElementById(prefix+'-scan-results');
+  if(sel)sel.value=productId;
+  if(input){input.value='';input.focus();}
+  if(results)results.innerHTML='';
+  (SCAN_UPDATE_MAP[prefix]||function(){})();
+  if(sel){sel.style.borderColor='var(--green)';sel.style.boxShadow='0 0 0 2px rgba(62,207,114,.25)';setTimeout(()=>{sel.style.borderColor='';sel.style.boxShadow='';},1200);}
+  const qtyFields={recv:'recv-qty',tf:'tf-qty',red:'red-qty'};
+  setTimeout(()=>document.getElementById(qtyFields[prefix])?.focus(),100);
+  toast(`✓ ${products.find(x=>x.id===productId)?.name} sélectionné`,'success');
+}
+
+function scanConfirm(prefix){
+  const input=document.getElementById(prefix+'-scanner');
+  if(!input)return;
+  const q=input.value.trim().toLowerCase();
+  if(!q)return;
+  let found=products.find(p=>(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q);
+  if(!found)found=products.find(p=>(p.name||'').toLowerCase().includes(q));
+  if(found)scanSelect(prefix,found.id);
+  else{toast(`Produit introuvable : "${input.value}"`,'error');input.select();}
+}
+
+function scanInventory(code){
+  const q=(code||'').trim().toLowerCase();
+  if(!q)return;
+  const found=products.find(p=>(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q||(p.name||'').toLowerCase().includes(q));
+  if(!found){toast(`Introuvable : "${code}"`,'error');return;}
+  ['minv-row-','inv-row-d-'].forEach(pfx=>{
+    const row=document.getElementById(pfx+found.id);
+    if(row){row.scrollIntoView({behavior:'smooth',block:'center'});row.style.borderColor='var(--blue)';row.style.background='var(--blue-bg)';setTimeout(()=>{row.style.borderColor='';row.style.background='';},2000);}
+  });
+  const input=document.getElementById('inv-qty-'+found.id);
+  if(input){input.focus();input.select();}
+  toast(`↓ ${found.name}`,'info');
+}
+
+// ── COLLAPSIBLE NAV ───────────────────────────────────────
 function toggleNavGroup(labelEl) {
   const items = labelEl.nextElementSibling;
   const isCollapsed = items.classList.contains('collapsed');
