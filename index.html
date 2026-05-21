@@ -704,7 +704,11 @@ async function loadAll() {
     });
 
     updateAlerts();
-    renderView(currentView);
+    // Don't re-render if we're in a mobile scanner operation (would destroy DOM)
+    const mScanViews = ['receive','transfer','reduce','inventory'];
+    if(!(window.innerWidth <= 768 && mScanViews.includes(currentView) && window._msCtx?.selectedProduct !== undefined)) {
+      renderView(currentView);
+    }
   } catch(e) { toast('Erreur chargement: '+e.message,'error'); }
   document.getElementById('refresh-icon').classList.remove('spin');
 }
@@ -2767,10 +2771,11 @@ async function msSubmit(prefix){
     if(he&&hw){hw.style.display='';he.innerHTML=si.slice(0,5).map(item=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px"><i class="ti ti-check" style="color:var(--green);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--green);flex-shrink:0">+${item.qty}</span></div>`).join('');}
     if(navigator.vibrate)navigator.vibrate([40,20,40]);
     toast(`✓ ${p.name} — ${qty} unités`,'success');
-    document.getElementById('ms-product-card').style.display='none';
-    document.getElementById('ms-qty-zone').style.display='none';
+    const pc=document.getElementById('ms-product-card');if(pc)pc.style.display='none';
+    const qz=document.getElementById('ms-qty-zone');if(qz)qz.style.display='none';
     window._msCtx.selectedProduct=null;
-    btn.style.opacity='0.4';btn.style.pointerEvents='none';btn.innerHTML=`<i class="ti ti-check" style="font-size:22px"></i>${{recv:'Réceptionner',red:'Retirer du stock',tf:'Transférer'}[prefix]}`;
+    const btn2=document.getElementById('ms-confirm-btn');
+    if(btn2){btn2.style.opacity='0.4';btn2.style.pointerEvents='none';btn2.innerHTML=`<i class="ti ti-check" style="font-size:22px"></i>${{recv:'Réceptionner',red:'Retirer du stock',tf:'Transférer'}[prefix]}`;}
     setTimeout(()=>document.getElementById('ms-scan')?.focus(),100);
   }catch(e){toast('Erreur: '+e.message,'error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';}
 }
