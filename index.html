@@ -1629,11 +1629,6 @@ function confirmDeleteProduct(id) {
   `, [
     {label:'<i class="ti ti-trash"></i> Supprimer définitivement', cls:'btn-danger', action:`deleteProduct(${id})`}
   ]);
-  // Disable button by default until name matches
-  setTimeout(()=>{
-    const btn = document.querySelector('#modal-footer .btn-danger');
-    if(btn) btn.disabled = true;
-  }, 50);
 }
 
 async function deleteProduct(id) {
