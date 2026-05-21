@@ -2635,7 +2635,7 @@ function setBcStatus(html){const e=document.getElementById('bc-status');if(e)e.i
 function openModal(title,body,buttons=[]) {
   document.getElementById('modal-title').textContent=title;
   document.getElementById('modal-body').innerHTML=body;
-  document.getElementById('modal-footer').innerHTML=`<button class="btn" onclick="closeModal()">Fermer</button>`+
+  document.getElementById('modal-footer').innerHTML=`<button class="btn" onclick="closeModal()">Fermertest</button>`+
     buttons.map(b=>`<button class="btn ${b.cls||''}" onclick="${b.action}">${b.label}</button>`).join('');
   document.getElementById('modal-overlay').classList.add('show');
 }
