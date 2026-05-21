@@ -393,6 +393,7 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
 
 <div class="main">
   <div class="topbar">
+    <button class="btn" id="mob-back" onclick="mobGoBack()" title="Retour" style="display:none;padding:0;width:36px;height:36px;justify-content:center;flex-shrink:0"><i class="ti ti-arrow-left" style="font-size:18px"></i></button>
     <div class="topbar-title" id="topbar-title">Vue d'ensemble</div>
     <div class="search-wrap"><i class="ti ti-search"></i><input id="global-search" placeholder="Rechercher…" oninput="onSearch()"></div>
     <button class="btn" id="mob-refresh" onclick="loadAll()" title="Actualiser"><i class="ti ti-refresh" id="refresh-icon"></i></button>
@@ -448,24 +449,32 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
 <div class="more-sheet-overlay" id="more-overlay" onclick="closeMoreSheet()"></div>
 <div class="more-sheet" id="more-sheet">
   <div class="more-sheet-handle"></div>
-  <div class="more-sheet-title">Opérations</div>
-  <div class="more-item" onclick="closeMoreSheet();mobNav('receive')">
-    <i class="ti ti-truck-delivery" style="color:var(--green)"></i>
-    <div><div class="more-item-label">Réceptionner</div><div class="more-item-sub">Ajouter du stock</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin-bottom:1px">
+    <div onclick="closeMoreSheet();mobNav('receive')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+      <div style="width:48px;height:48px;background:var(--green-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
+      <div style="font-size:14px;font-weight:600">Réceptionner</div>
+      <div style="font-size:11px;color:var(--text3)">Ajouter du stock</div>
+    </div>
+    <div onclick="closeMoreSheet();mobNav('reduce')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+      <div style="width:48px;height:48px;background:var(--red-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--red)"><i class="ti ti-minus-vertical"></i></div>
+      <div style="font-size:14px;font-weight:600">Réduire stock</div>
+      <div style="font-size:11px;color:var(--text3)">Sortie, vente, perte</div>
+    </div>
+    <div onclick="closeMoreSheet();mobNav('transfer')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+      <div style="width:48px;height:48px;background:var(--blue-bg);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--blue)"><i class="ti ti-transfer"></i></div>
+      <div style="font-size:14px;font-weight:600">Transfert</div>
+      <div style="font-size:11px;color:var(--text3)">Déplacer stock</div>
+    </div>
+    <div onclick="closeMoreSheet();mobNav('create')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+      <div style="width:48px;height:48px;background:var(--amber-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--amber)"><i class="ti ti-plus"></i></div>
+      <div style="font-size:14px;font-weight:600">Créer article</div>
+      <div style="font-size:11px;color:var(--text3)">Nouveau produit</div>
+    </div>
   </div>
-  <div class="more-item" onclick="closeMoreSheet();mobNav('transfer')">
-    <i class="ti ti-transfer" style="color:var(--blue)"></i>
-    <div><div class="more-item-label">Transfert</div><div class="more-item-sub">Déplacer entre emplacements</div></div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('alerts')">
+    <i class="ti ti-bell" style="color:var(--amber)"></i>
+    <div><div class="more-item-label">Alertes</div><div class="more-item-sub" id="more-alerts-sub">Stock faible</div></div>
   </div>
-  <div class="more-item" onclick="closeMoreSheet();mobNav('reduce')">
-    <i class="ti ti-minus-vertical" style="color:var(--red)"></i>
-    <div><div class="more-item-label">Réduire stock</div><div class="more-item-sub">Sortie, vente, perte</div></div>
-  </div>
-  <div class="more-item" onclick="closeMoreSheet();mobNav('create')">
-    <i class="ti ti-plus" style="color:var(--amber)"></i>
-    <div><div class="more-item-label">Créer article</div><div class="more-item-sub">Nouveau produit</div></div>
-  </div>
-  <div class="more-sheet-title" style="margin-top:8px">Gestion</div>
   <div class="more-item" onclick="closeMoreSheet();mobNav('locations')">
     <i class="ti ti-map-pin" style="color:var(--purple)"></i>
     <div><div class="more-item-label">Emplacements</div><div class="more-item-sub">Gérer les entrepôts</div></div>
@@ -474,11 +483,6 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
     <i class="ti ti-arrows-exchange" style="color:var(--text2)"></i>
     <div><div class="more-item-label">Mouvements</div><div class="more-item-sub">Historique complet</div></div>
   </div>
-  <div class="more-item" onclick="closeMoreSheet();mobNav('alerts')">
-    <i class="ti ti-bell" style="color:var(--amber)"></i>
-    <div><div class="more-item-label">Alertes</div><div class="more-item-sub" id="more-alerts-sub">Stock faible</div></div>
-  </div>
-  <div class="more-sheet-title" id="more-admin-title" style="margin-top:8px;display:none">Administration</div>
   <div class="more-item" id="more-settings" style="display:none" onclick="closeMoreSheet();mobNav('settings')">
     <i class="ti ti-settings" style="color:var(--text2)"></i>
     <div><div class="more-item-label">Paramètres</div><div class="more-item-sub">Catégories, unités, seuils</div></div>
@@ -487,7 +491,6 @@ td.mono{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
     <i class="ti ti-users" style="color:var(--blue)"></i>
     <div><div class="more-item-label">Utilisateurs</div><div class="more-item-sub">Gérer les accès</div></div>
   </div>
-  <div class="more-sheet-title" style="margin-top:8px">Compte</div>
   <div class="more-item" onclick="closeMoreSheet();doSignOut()" style="color:var(--red)">
     <i class="ti ti-logout" style="color:var(--red)"></i>
     <div><div class="more-item-label" style="color:var(--red)">Se déconnecter</div><div class="more-item-sub" id="more-user-email">—</div></div>
@@ -2590,9 +2593,25 @@ function syncMobTabs(view) {
   else document.getElementById('mobtab-more')?.classList.add('active');
 }
 
+// Mobile back button
+const MOB_BACK_VIEWS = ['receive','transfer','reduce','inventory','create','alerts','locations','movements','settings','users','auditlog','csvimport'];
+const MOB_BACK_DEST  = {receive:'dashboard',transfer:'dashboard',reduce:'dashboard',inventory:'dashboard',create:'products',alerts:'dashboard',locations:'dashboard',movements:'dashboard',settings:'dashboard',users:'dashboard',auditlog:'dashboard',csvimport:'dashboard'};
+
+function mobGoBack() {
+  const dest = MOB_BACK_DEST[currentView] || 'dashboard';
+  mobNav(dest);
+}
+
+function updateMobBackBtn(view) {
+  const btn = document.getElementById('mob-back');
+  if(!btn) return;
+  const show = window.innerWidth <= 768 && MOB_BACK_VIEWS.includes(view);
+  btn.style.display = show ? 'flex' : 'none';
+}
+
 function mobNav(view) {
+  updateMobBackBtn(view);
   if(window.innerWidth <= 768 && ['receive','transfer','reduce','inventory'].includes(view)) {
-    // Mobile scanner-style views
     currentView = view;
     document.getElementById('topbar-title').textContent = {
       receive:'Réceptionner', transfer:'Transfert',
@@ -2607,6 +2626,7 @@ function mobNav(view) {
   } else {
     nav(view);
     syncMobTabs(view);
+    updateMobBackBtn(view);
   }
 }
 
