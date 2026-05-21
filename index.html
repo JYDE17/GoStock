@@ -1626,7 +1626,6 @@ function confirmDeleteProduct(id) {
         Tu vas supprimer <strong style="color:var(--text1)">${escHtml(p.name)}</strong> ainsi que tout son stock et ses mouvements associés.
       </div>
     </div>
-    <input id="del-confirm-input" type="text" class="form-input" style="margin-top:10px" placeholder="${escHtml(p.name)}" oninput="document.getElementById('del-confirm-btn').disabled=this.value!=='${escHtml(p.name).replace(/'/g,"\\'")}'" >
   `, [
     {label:'<i class="ti ti-trash"></i> Supprimer définitivement', cls:'btn-danger', action:`deleteProduct(${id})`}
   ]);
