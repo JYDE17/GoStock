@@ -2591,9 +2591,286 @@ function syncMobTabs(view) {
 }
 
 function mobNav(view) {
-  nav(view);
-  syncMobTabs(view);
+  if(window.innerWidth <= 768 && ['receive','transfer','reduce','inventory'].includes(view)) {
+    // Mobile scanner-style views
+    currentView = view;
+    document.getElementById('topbar-title').textContent = {
+      receive:'Réceptionner', transfer:'Transfert',
+      reduce:'Réduire stock', inventory:'Faire inventaire'
+    }[view];
+    syncMobTabs(view);
+    const c = document.getElementById('main-content');
+    if(view==='receive')   mScanReceive(c);
+    if(view==='transfer')  mScanTransfer(c);
+    if(view==='reduce')    mScanReduce(c);
+    if(view==='inventory') mScanInventory(c);
+  } else {
+    nav(view);
+    syncMobTabs(view);
+  }
 }
+
+
+// ══════════════════════════════════════════════════════════
+// MOBILE SCANNER-STYLE VIEWS (style PowerScan)
+// ══════════════════════════════════════════════════════════
+
+function mScanUI(opts) {
+  const locs = locations.filter(l=>l.usage==='internal');
+  const c = document.getElementById('main-content');
+  const colorMap = {green:'var(--green)',blue:'var(--blue)',red:'var(--red)',purple:'var(--purple)'};
+  const col = opts.color;
+  c.innerHTML = `
+  <div id="ms-wrap" style="display:flex;flex-direction:column;gap:12px">
+    <div style="background:var(--bg1);border:2px solid var(--${col});border-radius:16px;padding:16px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--${col});font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i class="ti ti-barcode"></i>Scanner ou rechercher</div>
+      <input id="ms-scan" style="width:100%;height:52px;background:var(--bg2);border:1.5px solid var(--border);border-radius:12px;padding:0 14px;color:var(--text1);font-size:16px;font-family:var(--font-mono);outline:none;-webkit-appearance:none" type="text" placeholder="Code-barres, référence ou nom…" autocomplete="off" autocorrect="off" spellcheck="false" inputmode="text" oninput="msScanSearch('${opts.prefix}')" onkeydown="if(event.key==='Enter'){event.preventDefault();msScanConfirm('${opts.prefix}');}">
+      <div id="ms-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+      <div id="ms-not-found" style="background:var(--red-dim);border:1px solid rgba(245,69,92,.3);border-radius:10px;padding:12px;font-size:13px;color:var(--red);display:none;margin-top:8px">Produit introuvable</div>
+    </div>
+    <div id="ms-product-card" style="display:none;background:var(--bg1);border:1px solid var(--${col});border-radius:16px;padding:16px">
+      <div id="ms-prod-name" style="font-size:18px;font-weight:700;margin-bottom:4px">—</div>
+      <div id="ms-prod-sub" style="font-size:12px;color:var(--text3);margin-bottom:12px">—</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">Stock actuel</div><div id="ms-prod-qty" style="font-size:28px;font-weight:800;font-family:var(--font-mono)">—</div></div>
+        <span class="badge" id="ms-prod-badge">—</span>
+      </div>
+      ${opts.extraFields||''}
+    </div>
+    <div id="ms-qty-zone" style="display:none;background:var(--bg1);border:1px solid var(--border);border-radius:16px;padding:16px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;font-weight:500">${opts.qtyLabel||'Quantité'}</div>
+      <input id="ms-qty" style="width:100%;height:64px;background:var(--bg2);border:2px solid var(--border);border-radius:12px;font-size:32px;font-family:var(--font-mono);font-weight:700;text-align:center;color:var(--text1);outline:none;-webkit-appearance:none" type="number" inputmode="numeric" min="1" step="1" placeholder="0" oninput="msCheckReady('${opts.prefix}')" onkeydown="if(event.key==='Enter'){event.preventDefault();msSubmit('${opts.prefix}');}">
+    </div>
+    <button id="ms-confirm-btn" onclick="msSubmit('${opts.prefix}')" style="width:100%;height:56px;background:var(--${col==='green'?'green':col==='red'?'red':col==='blue'?'blue':'purple'});border:none;border-radius:14px;color:${col==='amber'?'#000':'#fff'};font-size:18px;font-weight:700;font-family:var(--font-head);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;opacity:.4;pointer-events:none;transition:all .2s">
+      <i class="ti ti-check" style="font-size:22px"></i>${opts.confirmLabel||'Confirmer'}
+    </button>
+    <div id="ms-history-wrap" style="display:none">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Session en cours</div>
+      <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
+    </div>
+  </div>`;
+  window._msCtx={prefix:opts.prefix,selectedProduct:null,sessionItems:[],locs};
+  setTimeout(()=>document.getElementById('ms-scan')?.focus(),150);
+}
+
+function msScanSearch(prefix){
+  const input=document.getElementById('ms-scan');
+  const resultsEl=document.getElementById('ms-scan-results');
+  if(!input||!resultsEl)return;
+  document.getElementById('ms-not-found')?.style&&(document.getElementById('ms-not-found').style.display='none');
+  const q=input.value.trim().toLowerCase();
+  if(!q){resultsEl.innerHTML='';return;}
+  const matches=products.filter(p=>(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q||(p.barcode||'').toLowerCase().startsWith(q)||(p.reference||'').toLowerCase().startsWith(q)||(p.name||'').toLowerCase().includes(q)).slice(0,6);
+  if(!matches.length){resultsEl.innerHTML='';return;}
+  resultsEl.innerHTML=matches.map(p=>{const qty=getQty(p.id),s=getStatus(qty,p.id);const exact=(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q;return`<div onclick="msSelectProduct(${p.id})" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--bg${exact?'1':'2'});border:1.5px solid var(--${exact?'blue':'border'});border-radius:10px;cursor:pointer"><i class="ti ti-${exact?'circle-check':'package'}" style="color:var(--${exact?'blue':'text3'});font-size:18px;flex-shrink:0"></i><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:${exact?700:500};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</div><div style="font-size:11px;color:var(--text3)">${p.reference||p.barcode||''}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}</div><span class="badge badge-${s.color}" style="font-size:9px">${s.label}</span></div></div>`;}).join('');
+}
+
+function msScanConfirm(prefix){
+  const input=document.getElementById('ms-scan');if(!input)return;
+  const q=input.value.trim().toLowerCase();if(!q)return;
+  let found=products.find(p=>(p.barcode||'').toLowerCase()===q||(p.reference||'').toLowerCase()===q);
+  if(!found)found=products.find(p=>(p.name||'').toLowerCase().includes(q));
+  if(found)msSelectProduct(found.id);
+  else{const nf=document.getElementById('ms-not-found');if(nf)nf.style.display='';document.getElementById('ms-scan-results').innerHTML='';}
+}
+
+function msSelectProduct(id){
+  const p=products.find(x=>x.id===id);if(!p)return;
+  const qty=getQty(id),s=getStatus(qty,id);
+  if(window._msCtx)window._msCtx.selectedProduct=p;
+  const scanInput=document.getElementById('ms-scan');
+  if(scanInput)scanInput.value='';
+  document.getElementById('ms-scan-results').innerHTML='';
+  const nf=document.getElementById('ms-not-found');if(nf)nf.style.display='none';
+  document.getElementById('ms-prod-name').textContent=p.name;
+  document.getElementById('ms-prod-sub').textContent=[p.reference?'REF: '+p.reference:'',p.barcode?'CB: '+p.barcode:'',categories.find(c=>c.id===p.category_id)?.name||''].filter(Boolean).join(' · ');
+  document.getElementById('ms-prod-qty').textContent=Math.round(qty);
+  const badge=document.getElementById('ms-prod-badge');badge.textContent=s.label;badge.className='badge badge-'+s.color;
+  document.getElementById('ms-product-card').style.display='';
+  document.getElementById('ms-qty-zone').style.display='';
+  const qtyInput=document.getElementById('ms-qty');
+  if(qtyInput){qtyInput.value='';qtyInput.focus();qtyInput.select();}
+  msCheckReady(window._msCtx?.prefix);
+  if(navigator.vibrate)navigator.vibrate(40);
+}
+
+function msCheckReady(prefix){
+  const qty=parseFloat(document.getElementById('ms-qty')?.value||0);
+  const btn=document.getElementById('ms-confirm-btn');if(!btn)return;
+  const hasProduct=!!window._msCtx?.selectedProduct;
+  const hasQty=qty>0;
+  let ready=hasProduct&&hasQty;
+  if(prefix==='tf'){const from=document.getElementById('ms-tf-from')?.value;const to=document.getElementById('ms-tf-to')?.value;ready=ready&&!!from&&!!to&&from!==to;}
+  if(prefix==='recv')ready=ready&&!!document.getElementById('ms-recv-loc')?.value;
+  if(prefix==='red')ready=ready&&!!document.getElementById('ms-red-loc')?.value;
+  btn.style.opacity=ready?'1':'0.4';btn.style.pointerEvents=ready?'auto':'none';
+}
+
+async function msSubmit(prefix){
+  const p=window._msCtx?.selectedProduct;if(!p)return;
+  const qty=parseFloat(document.getElementById('ms-qty')?.value||0);
+  if(!qty||qty<=0){toast('Quantité requise','error');return;}
+  const btn=document.getElementById('ms-confirm-btn');
+  btn.style.opacity='0.4';btn.style.pointerEvents='none';btn.innerHTML='<i class="ti ti-loader spin" style="font-size:20px"></i>';
+  try{
+    if(prefix==='recv'){
+      const locId=parseInt(document.getElementById('ms-recv-loc').value);
+      if(!locId){toast('Choisir un emplacement','error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';return;}
+      const existing=stockMap[p.id]?.byLocation?.find(b=>b.locId===locId);
+      const newQty=(existing?.qty||0)+qty;
+      await sb.from('stock').upsert({product_id:p.id,location_id:locId,quantity:newQty},{onConflict:'product_id,location_id'});
+      await sb.from('movements').insert({product_id:p.id,location_to:locId,quantity:qty,movement_type:'receive',user_id:user.id,user_email:profile?.email});
+      await logAction('receive',{product_id:p.id,product_name:p.name,quantity:qty});
+    }else if(prefix==='red'){
+      const locId=parseInt(document.getElementById('ms-red-loc').value);
+      if(!locId){toast('Choisir un emplacement','error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';return;}
+      const cur=stockMap[p.id]?.byLocation?.find(b=>b.locId===locId)?.qty||0;
+      if(qty>cur){toast(`Stock insuffisant (${Math.round(cur)} dispo)`,'error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';return;}
+      await sb.from('stock').upsert({product_id:p.id,location_id:locId,quantity:cur-qty},{onConflict:'product_id,location_id'});
+      await sb.from('movements').insert({product_id:p.id,location_from:locId,quantity:qty,movement_type:'reduce',user_id:user.id,user_email:profile?.email});
+      await logAction('reduce',{product_id:p.id,product_name:p.name,quantity:qty});
+    }else if(prefix==='tf'){
+      const fromId=parseInt(document.getElementById('ms-tf-from').value);
+      const toId=parseInt(document.getElementById('ms-tf-to').value);
+      if(!fromId||!toId){toast('Choisir les emplacements','error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';return;}
+      const cur=stockMap[p.id]?.byLocation?.find(b=>b.locId===fromId)?.qty||0;
+      if(qty>cur){toast(`Stock insuffisant (${Math.round(cur)} dispo)`,'error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';return;}
+      const dstCur=stockMap[p.id]?.byLocation?.find(b=>b.locId===toId)?.qty||0;
+      await sb.from('stock').upsert({product_id:p.id,location_id:fromId,quantity:cur-qty},{onConflict:'product_id,location_id'});
+      await sb.from('stock').upsert({product_id:p.id,location_id:toId,quantity:dstCur+qty},{onConflict:'product_id,location_id'});
+      await sb.from('movements').insert({product_id:p.id,location_from:fromId,location_to:toId,quantity:qty,movement_type:'transfer',user_id:user.id,user_email:profile?.email});
+      await logAction('transfer',{product_id:p.id,product_name:p.name,quantity:qty});
+    }
+    await loadAll();
+    const si=window._msCtx.sessionItems;si.unshift({name:p.name,qty,prefix});
+    const hw=document.getElementById('ms-history-wrap');const he=document.getElementById('ms-history');
+    if(he&&hw){hw.style.display='';he.innerHTML=si.slice(0,5).map(item=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px"><i class="ti ti-check" style="color:var(--green);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--green);flex-shrink:0">+${item.qty}</span></div>`).join('');}
+    if(navigator.vibrate)navigator.vibrate([40,20,40]);
+    toast(`✓ ${p.name} — ${qty} unités`,'success');
+    document.getElementById('ms-product-card').style.display='none';
+    document.getElementById('ms-qty-zone').style.display='none';
+    window._msCtx.selectedProduct=null;
+    btn.style.opacity='0.4';btn.style.pointerEvents='none';btn.innerHTML=`<i class="ti ti-check" style="font-size:22px"></i>${{recv:'Réceptionner',red:'Retirer du stock',tf:'Transférer'}[prefix]}`;
+    setTimeout(()=>document.getElementById('ms-scan')?.focus(),100);
+  }catch(e){toast('Erreur: '+e.message,'error');btn.style.opacity='1';btn.style.pointerEvents='auto';btn.innerHTML='<i class="ti ti-check" style="font-size:22px"></i>Confirmer';}
+}
+
+function mScanReceive(c){
+  const locs=locations.filter(l=>l.usage==='internal');
+  mScanUI({prefix:'recv',color:'green',confirmLabel:'Réceptionner',qtyLabel:'Quantité reçue',
+    extraFields:`<div><div style="font-size:12px;color:var(--text3);margin-bottom:6px">Emplacement destination *</div><select id="ms-recv-loc" style="width:100%;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--text1);font-size:15px;font-family:var(--font-head);outline:none" onchange="msCheckReady('recv')"><option value="">— Emplacement —</option>${locs.map(l=>`<option value="${l.id}">${escHtml(l.full_path||l.name)}</option>`).join('')}</select></div>`
+  });
+}
+
+function mScanReduce(c){
+  const locs=locations.filter(l=>l.usage==='internal');
+  mScanUI({prefix:'red',color:'red',confirmLabel:'Retirer du stock',qtyLabel:'Quantité à retirer',
+    extraFields:`<div><div style="font-size:12px;color:var(--text3);margin-bottom:6px">Emplacement source *</div><select id="ms-red-loc" style="width:100%;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--text1);font-size:15px;font-family:var(--font-head);outline:none" onchange="msCheckReady('red')"><option value="">— Emplacement —</option>${locs.map(l=>`<option value="${l.id}">${escHtml(l.full_path||l.name)}</option>`).join('')}</select></div>`
+  });
+}
+
+function mScanTransfer(c){
+  const locs=locations.filter(l=>l.usage==='internal');
+  mScanUI({prefix:'tf',color:'blue',confirmLabel:'Transférer',qtyLabel:'Quantité à transférer',
+    extraFields:`<div style="display:flex;gap:10px;align-items:center"><div style="flex:1"><div style="font-size:12px;color:var(--text3);margin-bottom:6px">De *</div><select id="ms-tf-from" style="width:100%;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--text1);font-size:14px;font-family:var(--font-head);outline:none" onchange="msCheckReady('tf')"><option value="">— Source —</option>${locs.map(l=>`<option value="${l.id}">${escHtml(l.name)}</option>`).join('')}</select></div><i class="ti ti-arrow-right" style="color:var(--blue);font-size:20px;flex-shrink:0;margin-top:18px"></i><div style="flex:1"><div style="font-size:12px;color:var(--text3);margin-bottom:6px">Vers *</div><select id="ms-tf-to" style="width:100%;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--text1);font-size:14px;font-family:var(--font-head);outline:none" onchange="msCheckReady('tf')"><option value="">— Dest. —</option>${locs.map(l=>`<option value="${l.id}">${escHtml(l.name)}</option>`).join('')}</select></div></div>`
+  });
+}
+
+function mScanInventory(c){
+  const mc=document.getElementById('main-content');
+  mc.innerHTML=`<div style="display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:12px;color:var(--text3)">Scannez et entrez la quantité comptée</div>
+      <button onclick="msScanInvSubmit()" style="height:34px;padding:0 14px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-head)"><i class="ti ti-check"></i> Valider tout</button>
+    </div>
+    <div style="background:var(--bg1);border:2px solid var(--purple);border-radius:16px;padding:16px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--purple);font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i class="ti ti-barcode"></i>Scanner ou rechercher</div>
+      <input id="ms-scan" style="width:100%;height:52px;background:var(--bg2);border:1.5px solid var(--border);border-radius:12px;padding:0 14px;color:var(--text1);font-size:16px;font-family:var(--font-mono);outline:none" type="text" placeholder="Code-barres, référence ou nom…" autocomplete="off" inputmode="text" oninput="msScanSearch('inv')" onkeydown="if(event.key==='Enter'){event.preventDefault();msScanConfirm('inv');}">
+      <div id="ms-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+      <div id="ms-not-found" style="background:var(--red-dim);border:1px solid rgba(245,69,92,.3);border-radius:10px;padding:12px;font-size:13px;color:var(--red);display:none;margin-top:8px">Produit introuvable</div>
+    </div>
+    <div id="ms-product-card" style="display:none;background:var(--bg1);border:1px solid var(--purple);border-radius:16px;padding:16px">
+      <div id="ms-prod-name" style="font-size:18px;font-weight:700;margin-bottom:4px">—</div>
+      <div id="ms-prod-sub" style="font-size:12px;color:var(--text3);margin-bottom:12px">—</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border-radius:10px;padding:12px 14px;margin-bottom:4px">
+        <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">En base</div><div id="ms-prod-qty" style="font-size:28px;font-weight:800;font-family:var(--font-mono)">—</div></div>
+        <div style="text-align:right"><span class="badge" id="ms-prod-badge">—</span><div id="ms-inv-diff" style="font-size:13px;font-family:var(--font-mono);font-weight:700;margin-top:4px"></div></div>
+      </div>
+    </div>
+    <div id="ms-qty-zone" style="display:none;background:var(--bg1);border:1px solid var(--border);border-radius:16px;padding:16px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;font-weight:500">Quantité comptée physiquement</div>
+      <input id="ms-qty" style="width:100%;height:64px;background:var(--bg2);border:2px solid var(--border);border-radius:12px;font-size:32px;font-family:var(--font-mono);font-weight:700;text-align:center;color:var(--text1);outline:none;-webkit-appearance:none" type="number" inputmode="numeric" min="0" step="1" placeholder="0" oninput="msInvDiff();msCheckReady('inv')" onkeydown="if(event.key==='Enter'){event.preventDefault();msInvAdd();}">
+    </div>
+    <button id="ms-confirm-btn" onclick="msInvAdd()" style="width:100%;height:56px;background:var(--purple);border:none;border-radius:14px;color:#fff;font-size:18px;font-weight:700;font-family:var(--font-head);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;opacity:.4;pointer-events:none;transition:all .2s"><i class="ti ti-plus" style="font-size:22px"></i>Enregistrer ce produit</button>
+    <div id="ms-history-wrap" style="display:none">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Produits comptés</div>
+      <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
+    </div>
+  </div>`;
+  window._msCtx={prefix:'inv',selectedProduct:null,sessionItems:[],invMap:{}};
+  setTimeout(()=>document.getElementById('ms-scan')?.focus(),150);
+}
+
+function msInvDiff(){
+  const p=window._msCtx?.selectedProduct;if(!p)return;
+  const counted=parseFloat(document.getElementById('ms-qty')?.value||'');
+  const diffEl=document.getElementById('ms-inv-diff');if(!diffEl||isNaN(counted))return;
+  const diff=counted-getQty(p.id);
+  diffEl.textContent=(diff>=0?'+':'')+Math.round(diff);
+  diffEl.style.color=diff>0?'var(--green)':diff<0?'var(--red)':'var(--text3)';
+}
+
+function msCheckReady(prefix){
+  const qty=parseFloat(document.getElementById('ms-qty')?.value||0);
+  const btn=document.getElementById('ms-confirm-btn');if(!btn)return;
+  let ready=!!window._msCtx?.selectedProduct&&qty>=0&&document.getElementById('ms-qty')?.value!=='';
+  if(prefix==='tf'){const f=document.getElementById('ms-tf-from')?.value;const t=document.getElementById('ms-tf-to')?.value;ready=ready&&qty>0&&!!f&&!!t&&f!==t;}
+  else if(prefix==='recv')ready=ready&&qty>0&&!!document.getElementById('ms-recv-loc')?.value;
+  else if(prefix==='red')ready=ready&&qty>0&&!!document.getElementById('ms-red-loc')?.value;
+  btn.style.opacity=ready?'1':'0.4';btn.style.pointerEvents=ready?'auto':'none';
+}
+
+async function msInvAdd(){
+  const p=window._msCtx?.selectedProduct;if(!p)return;
+  const counted=parseFloat(document.getElementById('ms-qty')?.value||'');
+  if(isNaN(counted)||counted<0){toast('Quantité invalide','error');return;}
+  window._msCtx.invMap[p.id]=counted;
+  window._msCtx.sessionItems.unshift({name:p.name,counted,before:Math.round(getQty(p.id))});
+  const hw=document.getElementById('ms-history-wrap');const he=document.getElementById('ms-history');
+  if(he&&hw){hw.style.display='';he.innerHTML=window._msCtx.sessionItems.slice(0,8).map(item=>{const diff=item.counted-item.before;return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px"><i class="ti ti-package" style="color:var(--text3);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span><span style="font-family:var(--font-mono);color:var(--text2);margin-right:8px">${item.counted}</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--${diff>0?'green':diff<0?'red':'text3'});flex-shrink:0">${diff>=0?'+':''}${diff}</span></div>`;}).join('');}
+  if(navigator.vibrate)navigator.vibrate([40,20,40]);
+  toast(`✓ ${p.name}: ${counted}`,'success');
+  document.getElementById('ms-product-card').style.display='none';
+  document.getElementById('ms-qty-zone').style.display='none';
+  if(document.getElementById('ms-inv-diff'))document.getElementById('ms-inv-diff').textContent='';
+  window._msCtx.selectedProduct=null;
+  const btn=document.getElementById('ms-confirm-btn');
+  btn.style.opacity='0.4';btn.style.pointerEvents='none';
+  setTimeout(()=>document.getElementById('ms-scan')?.focus(),100);
+}
+
+async function msScanInvSubmit(){
+  const invMap=window._msCtx?.invMap||{};
+  const keys=Object.keys(invMap);
+  if(!keys.length){toast('Aucun produit compté','error');return;}
+  let updates=0;
+  for(const pid of keys){
+    const counted=invMap[pid];
+    const locs2=stockMap[parseInt(pid)]?.byLocation;
+    const locId=locs2?.[0]?.locId;
+    if(locId){
+      await sb.from('stock').upsert({product_id:parseInt(pid),location_id:locId,quantity:counted},{onConflict:'product_id,location_id'});
+      const diff=counted-getQty(parseInt(pid));
+      if(diff!==0)await sb.from('movements').insert({product_id:parseInt(pid),location_from:diff<0?locId:null,location_to:diff>0?locId:null,quantity:Math.abs(diff),movement_type:'inventory',user_id:user.id,user_email:profile?.email});
+      updates++;
+    }
+  }
+  await logAction('inventory',{notes:`${updates} ajustements`});
+  toast(`✓ ${updates} produits mis à jour`,'success');
+  await loadAll();
+  mScanInventory(document.getElementById('main-content'));
+}
+
 
 function openMoreSheet() {
   document.getElementById('more-overlay').classList.add('show');
