@@ -1507,7 +1507,7 @@ async function showProd(id) {
           <input id="prod-threshold" type="number" min="0" max="9999" class="form-input" style="width:90px;text-align:center" value="${threshold}" placeholder="${window._alertThreshold||4}">
           <span style="font-size:13px;color:var(--text2)">unités</span>
           <button class="btn btn-amber" style="height:36px" onclick="saveProdThreshold(${id})"><i class="ti ti-check"></i> Sauvegarder</button>
-          <button class="btn" style="height:36px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Global</button>
+          <button class="btn" style="height:36px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Reset</button>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:8px">Laisse vide pour utiliser le seuil global (${window._alertThreshold||4} unités)</div>
       </div>
