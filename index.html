@@ -1437,13 +1437,33 @@ async function showProd(id) {
   const uom = uoms.find(u=>u.id===p.uom_id);
   const threshold = p.alert_threshold ?? window._alertThreshold ?? 4;
 
-  const locLines = (stockMap[id]?.byLocation||[]).map(b=>{
-    const l = locations.find(x=>x.id===b.locId);
-    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
-      <span style="color:var(--text2);font-size:12px">${escHtml(l?.name||'?')}</span>
-      <span style="font-family:var(--font-mono);font-weight:600;color:var(--${b.qty>0?'green':'text3'})">${Math.round(b.qty)}</span>
-    </div>`;
-  }).join('');
+  const locLines = (stockMap[id]?.byLocation||[])
+    .filter(b => b.qty > 0)
+    .sort((a,b) => b.qty - a.qty)
+    .map(b=>{
+      const l = locations.find(x=>x.id===b.locId);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--text1)">${escHtml(l?.name||'?')}</div>
+          ${l?.full_path && l.full_path !== l.name ? `<div style="font-size:11px;color:var(--text3)">${escHtml(l.full_path)}</div>` : ''}
+        </div>
+        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--green)">${Math.round(b.qty)}</span>
+      </div>`;
+    }).join('');
+
+  // All locations including empty ones
+  const allLocLines = (stockMap[id]?.byLocation||[])
+    .sort((a,b) => b.qty - a.qty)
+    .map(b=>{
+      const l = locations.find(x=>x.id===b.locId);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--text1)">${escHtml(l?.name||'?')}</div>
+          ${l?.full_path && l.full_path !== l.name ? `<div style="font-size:11px;color:var(--text3)">${escHtml(l.full_path)}</div>` : ''}
+        </div>
+        <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--${b.qty>0?'green':'text3'})">${Math.round(b.qty)}</span>
+      </div>`;
+    }).join('');
 
   // Load history from Supabase
   const { data: history } = await sb.from('movements')
@@ -1486,15 +1506,19 @@ async function showProd(id) {
         <div class="detail-cell"><div class="detail-cell-label">Code-barres</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${escHtml(p.barcode||'—')}</div></div>
         <div class="detail-cell"><div class="detail-cell-label">Catégorie</div><div class="detail-cell-value">${escHtml(cat?.name||'—')}</div></div>
         <div class="detail-cell"><div class="detail-cell-label">Unité</div><div class="detail-cell-value">${escHtml(uom?.name||'—')}</div></div>
-        <div class="detail-cell"><div class="detail-cell-label">Qté disponible</div><div class="detail-cell-value" style="font-size:22px;font-weight:700;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">En main</div><div class="detail-cell-value" style="font-size:22px;font-weight:700;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}<span style="font-size:12px;color:var(--text3);font-weight:400;margin-left:6px">unités</span></div></div>
         <div class="detail-cell"><div class="detail-cell-label">Statut</div><div class="detail-cell-value"><span class="badge badge-${s.color}">${s.label}</span></div></div>
         <div class="detail-cell"><div class="detail-cell-label">Prix vente</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.sale_price)}</div></div>
         <div class="detail-cell"><div class="detail-cell-label">Coût</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.cost_price)}</div></div>
       </div>
 
-      ${locLines ? `
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Stock par emplacement</div>
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0 12px;margin-bottom:16px">${locLines}</div>` : ''}
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        <span>Stock par emplacement</span>
+        <span style="font-family:var(--font-mono);color:var(--blue)">${(stockMap[id]?.byLocation||[]).length} emplacement${(stockMap[id]?.byLocation||[]).length!==1?'s':''}</span>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:0 14px;margin-bottom:16px">
+        ${allLocLines || '<div style="padding:14px 0;font-size:13px;color:var(--text3);text-align:center">Aucun stock enregistré</div>'}
+      </div>
 
       <!-- Seuil d'alerte personnalisé -->
       <div style="background:var(--amber-dim);border:1px solid rgba(245,166,35,.25);border-radius:8px;padding:14px 16px">
@@ -1507,7 +1531,7 @@ async function showProd(id) {
           <input id="prod-threshold" type="number" min="0" max="9999" class="form-input" style="width:90px;text-align:center" value="${threshold}" placeholder="${window._alertThreshold||4}">
           <span style="font-size:13px;color:var(--text2)">unités</span>
           <button class="btn btn-amber" style="height:36px" onclick="saveProdThreshold(${id})"><i class="ti ti-check"></i> Sauvegarder</button>
-          <button class="btn" style="height:36px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Reset</button>
+          <button class="btn" style="height:36px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Global</button>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:8px">Laisse vide pour utiliser le seuil global (${window._alertThreshold||4} unités)</div>
       </div>
@@ -1524,6 +1548,7 @@ async function showProd(id) {
     </div>
   `, [
     {label:'<i class="ti ti-pencil"></i> Modifier', cls:'btn-amber', action:`openEditProduct(${id})`},
+    {label:'Réceptionner', cls:'btn-success', action:`closeModal();goTo('receive',${id})`},
     {label:'Transférer',   cls:'btn-primary', action:`closeModal();goTo('transfer',${id})`},
     {label:'Réduire',      cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
     {label:'<i class=\"ti ti-trash\"></i> Supprimer', cls:'btn-danger', action:`confirmDeleteProduct(${id})`},
@@ -2635,7 +2660,7 @@ function setBcStatus(html){const e=document.getElementById('bc-status');if(e)e.i
 function openModal(title,body,buttons=[]) {
   document.getElementById('modal-title').textContent=title;
   document.getElementById('modal-body').innerHTML=body;
-  document.getElementById('modal-footer').innerHTML=
+  document.getElementById('modal-footer').innerHTML=`<button class="btn" onclick="closeModal()">Fermer</button>`+
     buttons.map(b=>`<button class="btn ${b.cls||''}" onclick="${b.action}">${b.label}</button>`).join('');
   document.getElementById('modal-overlay').classList.add('show');
 }
