@@ -431,7 +431,9 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 <!-- ══ MORE SHEET ══════════════════════════════════════ -->
 <div class="more-sheet-overlay" id="more-overlay" onclick="closeMoreSheet()"></div>
 <div class="more-sheet" id="more-sheet">
-  <div class="more-sheet-handle"></div>
+  <div class="more-sheet-handle" onclick="closeMoreSheet()" style="cursor:pointer;padding:10px 0;margin-bottom:4px;width:100%;display:flex;justify-content:center;align-items:center">
+    <div style="width:36px;height:4px;background:var(--border2);border-radius:2px"></div>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin-bottom:1px">
     <div onclick="closeMoreSheet();mobNav('receive')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
       <div style="width:48px;height:48px;background:var(--green-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
@@ -2365,6 +2367,30 @@ function closeMoreSheet() {
   document.getElementById('more-sheet').classList.remove('show');
   document.getElementById('more-overlay').classList.remove('show');
 }
+
+// Swipe down to close more sheet
+(function(){
+  let startY = 0, isDragging = false;
+  const sheet = document.getElementById('more-sheet');
+  sheet.addEventListener('touchstart', e => {
+    startY = e.touches[0].clientY;
+    isDragging = true;
+  }, {passive:true});
+  sheet.addEventListener('touchmove', e => {
+    if(!isDragging) return;
+    const dy = e.touches[0].clientY - startY;
+    if(dy > 0) sheet.style.transform = `translateY(${dy}px)`;
+  }, {passive:true});
+  sheet.addEventListener('touchend', e => {
+    if(!isDragging) return;
+    isDragging = false;
+    const dy = e.changedTouches[0].clientY - startY;
+    if(dy > 80) {
+      closeMoreSheet();
+    }
+    sheet.style.transform = '';
+  }, {passive:true});
+})();
 
 
 // ══════════════════════════════════════════════════════════
