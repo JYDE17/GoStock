@@ -1316,24 +1316,58 @@ function filterInvDesktop() {
 }
 function calcDiff(pid){const val=document.getElementById('inv-qty-'+pid)?.value;const d=document.getElementById('inv-diff-'+pid);if(!d)return;if(val===''||val===undefined){d.textContent='—';d.style.color='var(--text3)';return;}const diff=parseFloat(val)-getQty(pid);d.textContent=(diff>=0?'+':'')+Math.round(diff);d.style.color=diff>0?'var(--green)':diff<0?'var(--red)':'var(--text3)';}
 async function submitInventory() {
-  let updates=0,errors=0;
-  const defaultLoc=locations.find(l=>l.usage==='internal');
-  if(!defaultLoc){toast('Aucun emplacement interne','error');return;}
+  let updates=0, skipped=0, errors=0;
   toast('Validation en cours…','info');
   for(const p of products){
     const val=document.getElementById('inv-qty-'+p.id)?.value;
     if(val===''||val===undefined) continue;
     const counted=parseFloat(val);
     if(isNaN(counted)) continue;
-    const diff=counted-getQty(p.id);
+
+    // Trouver l'emplacement principal où ce produit a déjà du stock
+    const existingLocs = stockMap[p.id]?.byLocation || [];
+    // Prioriser l'emplacement avec le plus de stock, sinon premier emplacement interne
+    const bestLoc = existingLocs.sort((a,b)=>b.qty-a.qty)[0]
+      || { locId: locations.find(l=>l.usage==='internal')?.id };
+
+    if(!bestLoc?.locId) continue;
+    const locId = bestLoc.locId;
+
+    // Calculer le diff par rapport au total actuel
+    const currentTotal = getQty(p.id);
+    const diff = counted - currentTotal;
+
+    // Si aucun changement, skip
+    if(diff === 0){ skipped++; continue; }
+
     try {
-      await sb.from('stock').upsert({product_id:p.id,location_id:defaultLoc.id,quantity:counted},{onConflict:'product_id,location_id'});
-      if(diff!==0) await sb.from('movements').insert({product_id:p.id,location_to:diff>0?defaultLoc.id:null,location_from:diff<0?defaultLoc.id:null,quantity:Math.abs(diff),movement_type:'inventory',user_id:user.id,user_email:profile?.email});
+      // Mettre à jour uniquement cet emplacement : ajuster de la différence
+      const currentLocQty = stockMap[p.id]?.byLocation.find(b=>b.locId===locId)?.qty || 0;
+      const newLocQty = Math.max(0, currentLocQty + diff);
+      await sb.from('stock').upsert(
+        {product_id:p.id, location_id:locId, quantity:newLocQty},
+        {onConflict:'product_id,location_id'}
+      );
+      await sb.from('movements').insert({
+        product_id:p.id,
+        location_to:   diff>0 ? locId : null,
+        location_from: diff<0 ? locId : null,
+        quantity:Math.abs(diff),
+        movement_type:'inventory',
+        user_id:user.id,
+        user_email:profile?.email
+      });
       updates++;
-    } catch(e){errors++;}
+    } catch(e){ errors++; console.error(e); }
   }
-  if(updates>0){toast(`✓ ${updates} produit(s) mis à jour`,'success');await logAction('inventory',{notes:`${updates} ajustements`});await loadAll();vInventory(document.getElementById('main-content'));}
-  else toast('Aucune modification','info');
+  if(updates>0){
+    toast(`✓ ${updates} ajustement${updates>1?'s':''} — ${skipped} inchangé${skipped>1?'s':''}`, 'success');
+    await logAction('inventory',{notes:`${updates} ajustements`});
+    await loadAll();
+    vInventory(document.getElementById('main-content'));
+  } else {
+    toast(skipped > 0 ? `Aucun changement (${skipped} produit${skipped>1?'s':''} identique${skipped>1?'s':''})` : 'Aucune saisie', 'info');
+  }
   if(errors) toast(`${errors} erreur(s)`,'error');
 }
 
@@ -2162,8 +2196,28 @@ function msSelectProduct(id){
   const nf=document.getElementById('ms-not-found');if(nf)nf.style.display='none';
   document.getElementById('ms-prod-name').textContent=p.name;
   document.getElementById('ms-prod-sub').textContent=[p.reference?'REF: '+p.reference:'',p.barcode?'CB: '+p.barcode:'',categories.find(c=>c.id===p.category_id)?.name||''].filter(Boolean).join(' · ');
-  document.getElementById('ms-prod-qty').textContent=Math.round(qty);
-  const badge=document.getElementById('ms-prod-badge');badge.textContent=s.label;badge.className='badge badge-'+s.color;
+
+  // Si on est en mode inventaire avec emplacement, afficher qty de CET emplacement
+  const locId = window._msCtx?.prefix==='inv' ? window._msCtx?.locId : null;
+  const locQty = locId
+    ? (stockMap[p.id]?.byLocation.find(b=>b.locId===locId)?.qty||0)
+    : qty;
+
+  const qtyEl=document.getElementById('ms-prod-qty');
+  if(qtyEl) qtyEl.textContent=Math.round(locQty);
+
+  // Label emplacement
+  const locLabelEl=document.getElementById('ms-loc-label');
+  if(locLabelEl) locLabelEl.textContent=window._msCtx?.locName||'—';
+
+  // Total tous emplacements
+  const totalEl=document.getElementById('ms-prod-total');
+  if(totalEl) totalEl.textContent=Math.round(qty);
+
+  const badge=document.getElementById('ms-prod-badge');
+  // Status basé sur la qty de l'emplacement
+  const sLoc = locId ? getStatus(locQty, id) : s;
+  badge.textContent=sLoc.label;badge.className='badge badge-'+sLoc.color;
   document.getElementById('ms-product-card').style.display='';
   document.getElementById('ms-qty-zone').style.display='';
   const qtyInput=document.getElementById('ms-qty');
@@ -2256,45 +2310,139 @@ function mScanTransfer(c){
 }
 
 function mScanInventory(c){
-  const mc=document.getElementById('main-content');
-  mc.innerHTML=`<div style="display:flex;flex-direction:column;gap:12px">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div style="font-size:12px;color:var(--text3)">Scannez et entrez la quantité comptée</div>
-      <button onclick="msScanInvSubmit()" style="height:34px;padding:0 14px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-head)"><i class="ti ti-check"></i> Valider tout</button>
+  // ── ÉTAPE 1 : sélection de l'emplacement ─────────────────
+  const mc = document.getElementById('main-content');
+  const internalLocs = locations.filter(l=>l.usage==='internal');
+
+  mc.innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <!-- Header -->
+    <div style="background:var(--bg1);border:1px solid var(--border);border-radius:14px;padding:18px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+        <div style="width:42px;height:42px;background:#1e1b4b;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--purple)"><i class="ti ti-clipboard-list"></i></div>
+        <div>
+          <div style="font-size:16px;font-weight:700">Faire l'inventaire</div>
+          <div style="font-size:12px;color:var(--text3)">Choisissez un emplacement à compter</div>
+        </div>
+      </div>
     </div>
+
+    <!-- Sélection emplacement -->
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;padding:0 4px">Emplacement à inventorier</div>
+
+    ${internalLocs.length ? internalLocs.map(l => {
+      const locProds = Object.entries(stockMap)
+        .filter(([pid, sm]) => sm.byLocation.some(b => b.locId===l.id && b.qty>0));
+      const totalQty = stockMap ? Object.values(stockMap)
+        .reduce((s, sm) => s + (sm.byLocation.find(b=>b.locId===l.id)?.qty||0), 0) : 0;
+      const refCount = locProds.length;
+      return `<div onclick="mStartInventoryAtLoc(${l.id},'${escHtml(l.name)}')"
+        style="background:var(--bg1);border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--purple)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="width:46px;height:46px;background:#1e1b4b;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--purple);flex-shrink:0"><i class="ti ti-map-pin"></i></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(l.name)}</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${refCount} référence${refCount!==1?'s':''} · ${Math.round(totalQty)} unités</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:22px;font-weight:800;font-family:var(--font-mono);color:var(--purple)">${Math.round(totalQty)}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">unités</div>
+        </div>
+        <i class="ti ti-chevron-right" style="color:var(--text3);font-size:18px"></i>
+      </div>`;
+    }).join('') : '<div class="empty">Aucun emplacement interne</div>'}
+  </div>`;
+
+  window._msCtx = {prefix:'inv', selectedProduct:null, sessionItems:[], invMap:{}, locId:null, locName:''};
+}
+
+function mStartInventoryAtLoc(locId, locName) {
+  // ── ÉTAPE 2 : scan des produits pour cet emplacement ────
+  window._msCtx = {prefix:'inv', selectedProduct:null, sessionItems:[], invMap:{}, locId, locName};
+
+  // Produits qui ont du stock dans cet emplacement
+  const locProds = products.filter(p =>
+    (stockMap[p.id]?.byLocation||[]).some(b=>b.locId===locId && b.qty>0)
+  );
+  const totalQty = Object.values(stockMap)
+    .reduce((s,sm) => s+(sm.byLocation.find(b=>b.locId===locId)?.qty||0), 0);
+
+  const mc = document.getElementById('main-content');
+  mc.innerHTML = `
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- Topbar emplacement -->
+    <div style="background:var(--bg1);border:1px solid var(--purple);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+      <button onclick="mScanInventory()" style="width:34px;height:34px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="ti ti-arrow-left" style="font-size:16px"></i>
+      </button>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="ti ti-map-pin" style="color:var(--purple);margin-right:6px"></i>${escHtml(locName)}</div>
+        <div style="font-size:11px;color:var(--text3)">${locProds.length} référence${locProds.length!==1?'s':''} · ${Math.round(totalQty)} unités en base</div>
+      </div>
+      <button onclick="msScanInvSubmit()" style="height:34px;padding:0 12px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-head);flex-shrink:0"><i class="ti ti-check"></i> Valider</button>
+    </div>
+
+    <!-- Zone scan -->
     <div style="background:var(--bg1);border:2px solid var(--purple);border-radius:16px;padding:16px">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--purple);font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px"><i class="ti ti-barcode"></i>Scanner ou rechercher</div>
       <input id="ms-scan" style="width:100%;height:52px;background:var(--bg2);border:1.5px solid var(--border);border-radius:12px;padding:0 14px;color:var(--text1);font-size:16px;font-family:var(--font-mono);outline:none" type="text" placeholder="Code-barres, référence ou nom…" autocomplete="off" inputmode="text" oninput="msScanSearch('inv')" onkeydown="if(event.key==='Enter'){event.preventDefault();msScanConfirm('inv');}">
       <div id="ms-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
-      <div id="ms-not-found" style="background:var(--red-dim);border:1px solid rgba(245,69,92,.3);border-radius:10px;padding:12px;font-size:13px;color:var(--red);display:none;margin-top:8px">Produit introuvable</div>
+      <div id="ms-not-found" style="background:var(--red-dim);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px;font-size:13px;color:var(--red);display:none;margin-top:8px">Produit introuvable</div>
     </div>
+
+    <!-- Produit sélectionné -->
     <div id="ms-product-card" style="display:none;background:var(--bg1);border:1px solid var(--purple);border-radius:16px;padding:16px">
       <div id="ms-prod-name" style="font-size:18px;font-weight:700;margin-bottom:4px">—</div>
       <div id="ms-prod-sub" style="font-size:12px;color:var(--text3);margin-bottom:12px">—</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border-radius:10px;padding:12px 14px;margin-bottom:4px">
-        <div><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em">En base</div><div id="ms-prod-qty" style="font-size:28px;font-weight:800;font-family:var(--font-mono)">—</div></div>
-        <div style="text-align:right"><span class="badge" id="ms-prod-badge">—</span><div id="ms-inv-diff" style="font-size:13px;font-family:var(--font-mono);font-weight:700;margin-top:4px"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+        <div style="background:var(--bg2);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Dans <span id="ms-loc-label" style="color:var(--purple)">—</span></div>
+          <div id="ms-prod-qty" style="font-size:28px;font-weight:800;font-family:var(--font-mono)">—</div>
+        </div>
+        <div style="background:var(--bg2);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total tous empl.</div>
+          <div id="ms-prod-total" style="font-size:28px;font-weight:800;font-family:var(--font-mono);color:var(--text2)">—</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0">
+        <span class="badge" id="ms-prod-badge">—</span>
+        <div id="ms-inv-diff" style="font-size:14px;font-family:var(--font-mono);font-weight:700"></div>
       </div>
     </div>
+
+    <!-- Quantité -->
     <div id="ms-qty-zone" style="display:none;background:var(--bg1);border:1px solid var(--border);border-radius:16px;padding:16px">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;font-weight:500">Quantité comptée physiquement</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;font-weight:500">Quantité comptée dans <strong style="color:var(--purple)">${escHtml(locName)}</strong></div>
       <input id="ms-qty" style="width:100%;height:64px;background:var(--bg2);border:2px solid var(--border);border-radius:12px;font-size:32px;font-family:var(--font-mono);font-weight:700;text-align:center;color:var(--text1);outline:none;-webkit-appearance:none" type="number" inputmode="numeric" min="0" step="1" placeholder="0" oninput="msInvDiff();msCheckReady('inv')" onkeydown="if(event.key==='Enter'){event.preventDefault();msInvAdd();}">
     </div>
-    <button id="ms-confirm-btn" onclick="msInvAdd()" style="width:100%;height:56px;background:var(--purple);border:none;border-radius:14px;color:#fff;font-size:18px;font-weight:700;font-family:var(--font-head);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;opacity:.4;pointer-events:none;transition:all .2s"><i class="ti ti-plus" style="font-size:22px"></i>Enregistrer ce produit</button>
+
+    <!-- Bouton confirmer -->
+    <button id="ms-confirm-btn" onclick="msInvAdd()" style="width:100%;height:56px;background:var(--purple);border:none;border-radius:14px;color:#fff;font-size:18px;font-weight:700;font-family:var(--font-head);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;opacity:.4;pointer-events:none;transition:all .2s">
+      <i class="ti ti-plus" style="font-size:22px"></i>Enregistrer
+    </button>
+
+    <!-- Historique session -->
     <div id="ms-history-wrap" style="display:none">
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Produits comptés</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Comptés cette session</div>
       <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
     </div>
+
   </div>`;
-  window._msCtx={prefix:'inv',selectedProduct:null,sessionItems:[],invMap:{}};
-  setTimeout(()=>document.getElementById('ms-scan')?.focus(),150);
+
+  setTimeout(()=>document.getElementById('ms-scan')?.focus(), 150);
 }
 
 function msInvDiff(){
-  const p=window._msCtx?.selectedProduct;if(!p)return;
+  const p=window._msCtx?.selectedProduct; if(!p) return;
+  const locId=window._msCtx?.locId;
   const counted=parseFloat(document.getElementById('ms-qty')?.value||'');
-  const diffEl=document.getElementById('ms-inv-diff');if(!diffEl||isNaN(counted))return;
-  const diff=counted-getQty(p.id);
+  const diffEl=document.getElementById('ms-inv-diff'); if(!diffEl||isNaN(counted)) return;
+  // Diff vs qty dans CET emplacement
+  const locQty = locId
+    ? (stockMap[p.id]?.byLocation.find(b=>b.locId===locId)?.qty||0)
+    : getQty(p.id);
+  const diff=counted-locQty;
   diffEl.textContent=(diff>=0?'+':'')+Math.round(diff);
   diffEl.style.color=diff>0?'var(--green)':diff<0?'var(--red)':'var(--text3)';
 }
@@ -2313,10 +2461,19 @@ async function msInvAdd(){
   const p=window._msCtx?.selectedProduct;if(!p)return;
   const counted=parseFloat(document.getElementById('ms-qty')?.value||'');
   if(isNaN(counted)||counted<0){toast('Quantité invalide','error');return;}
-  window._msCtx.invMap[p.id]=counted;
-  window._msCtx.sessionItems.unshift({name:p.name,counted,before:Math.round(getQty(p.id))});
+  const locId=window._msCtx?.locId;
+  const locQty=locId?(stockMap[p.id]?.byLocation.find(b=>b.locId===locId)?.qty||0):getQty(p.id);
+  window._msCtx.invMap[p.id]={counted, locId};
+  window._msCtx.sessionItems.unshift({name:p.name,counted,before:Math.round(locQty)});
   const hw=document.getElementById('ms-history-wrap');const he=document.getElementById('ms-history');
-  if(he&&hw){hw.style.display='';he.innerHTML=window._msCtx.sessionItems.slice(0,8).map(item=>{const diff=item.counted-item.before;return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px"><i class="ti ti-package" style="color:var(--text3);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span><span style="font-family:var(--font-mono);color:var(--text2);margin-right:8px">${item.counted}</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--${diff>0?'green':diff<0?'red':'text3'});flex-shrink:0">${diff>=0?'+':''}${diff}</span></div>`;}).join('');}
+  if(he&&hw){hw.style.display='';he.innerHTML=window._msCtx.sessionItems.slice(0,8).map(item=>{
+    const diff=item.counted-item.before;
+    return`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px">
+      <i class="ti ti-package" style="color:var(--text3);flex-shrink:0"></i>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span>
+      <span style="font-family:var(--font-mono);color:var(--text2);margin-right:8px">${item.counted}</span>
+      <span style="font-family:var(--font-mono);font-weight:700;color:var(--${diff>0?'green':diff<0?'red':'text3'});flex-shrink:0">${diff>=0?'+':''}${diff}</span>
+    </div>`;}).join('');}
   if(navigator.vibrate)navigator.vibrate([40,20,40]);
   toast(`✓ ${p.name}: ${counted}`,'success');
   document.getElementById('ms-product-card').style.display='none';
@@ -2332,20 +2489,36 @@ async function msScanInvSubmit(){
   const invMap=window._msCtx?.invMap||{};
   const keys=Object.keys(invMap);
   if(!keys.length){toast('Aucun produit compté','error');return;}
-  let updates=0;
+  let updates=0, skipped=0;
   for(const pid of keys){
-    const counted=invMap[pid];
-    const locs2=stockMap[parseInt(pid)]?.byLocation;
-    const locId=locs2?.[0]?.locId;
-    if(locId){
-      await sb.from('stock').upsert({product_id:parseInt(pid),location_id:locId,quantity:counted},{onConflict:'product_id,location_id'});
-      const diff=counted-getQty(parseInt(pid));
-      if(diff!==0)await sb.from('movements').insert({product_id:parseInt(pid),location_from:diff<0?locId:null,location_to:diff>0?locId:null,quantity:Math.abs(diff),movement_type:'inventory',user_id:user.id,user_email:profile?.email});
-      updates++;
-    }
+    const {counted, locId}=invMap[pid];
+    const id=parseInt(pid);
+    if(!locId) continue;
+
+    // Qty actuelle dans CET emplacement
+    const currentLocQty=stockMap[id]?.byLocation.find(b=>b.locId===locId)?.qty||0;
+    const diff=counted-currentLocQty;
+
+    if(diff===0){skipped++;continue;}
+
+    const newQty=Math.max(0,counted);
+    await sb.from('stock').upsert(
+      {product_id:id,location_id:locId,quantity:newQty},
+      {onConflict:'product_id,location_id'}
+    );
+    await sb.from('movements').insert({
+      product_id:id,
+      location_from:diff<0?locId:null,
+      location_to:  diff>0?locId:null,
+      quantity:Math.abs(diff),
+      movement_type:'inventory',
+      user_id:user.id,
+      user_email:profile?.email
+    });
+    updates++;
   }
-  await logAction('inventory',{notes:`${updates} ajustements`});
-  toast(`✓ ${updates} produits mis à jour`,'success');
+  await logAction('inventory',{notes:`${updates} ajustements, ${skipped} inchangés`});
+  toast(`✓ ${updates} ajustement${updates>1?'s':''} — ${skipped} inchangé${skipped>1?'s':''}`, 'success');
   await loadAll();
   mScanInventory(document.getElementById('main-content'));
 }
