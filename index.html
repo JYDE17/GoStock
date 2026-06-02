@@ -802,7 +802,7 @@ function vDashboard(c) {
         const cols={receive:'green',reduce:'red',transfer:'blue',inventory:'purple',import:'gray'};
         return `<tr onclick="nav('movements')" style="cursor:pointer">
           <td style="font-size:12px;font-weight:500">${escHtml((p?.name||'—').slice(0,26))}</td>
-          <td style="font-family:var(--font-mono);color:var(--${cols[m.movement_type]||'gray'})">${m.quantity>0?'+':''}${m.quantity}</td>
+          <td style="font-family:var(--font-mono);color:var(--${cols[m.movement_type]||'gray'})">${m.movement_type==='reduce'||m.location_from&&!m.location_to?'-':'+'}${Math.abs(m.quantity)}</td>
           <td><span class="badge badge-${cols[m.movement_type]||'gray'}">${m.movement_type||'—'}</span></td>
           <td style="font-size:11px;color:var(--text3)">${fmtDate(m.created_at)}</td>
         </tr>`;
@@ -937,25 +937,46 @@ function vLocations(c) {
 }
 
 function vMovements(c) {
+  const cols={receive:'green',reduce:'red',transfer:'blue',inventory:'purple',import:'gray'};
+  const typeLabel={receive:'Réception',reduce:'Sortie',transfer:'Transfert',inventory:'Inventaire',import:'Import'};
+
+  // Expand transfers into 2 rows each
+  const rows = [];
+  movements.forEach(m => {
+    if(m.movement_type === 'transfer' && m.location_from && m.location_to) {
+      // Row 1: sortie du source
+      rows.push({...m, _display:'out', _loc: m.location_from, _sign:'-'});
+      // Row 2: entrée dans destination
+      rows.push({...m, _display:'in',  _loc: m.location_to,   _sign:'+'});
+    } else {
+      const sign = (m.movement_type==='reduce' || (m.location_from && !m.location_to)) ? '-' : '+';
+      rows.push({...m, _display:'single', _loc: m.location_from || m.location_to, _sign: sign});
+    }
+  });
+
   c.innerHTML=`<div class="table-card">
     <div class="table-toolbar"><div class="table-toolbar-title">Mouvements <span style="color:var(--text3);font-size:12px">${movements.length}</span></div></div>
-    <table><thead><tr><th>Date</th><th>Produit</th><th>Qté</th><th>Type</th><th>De</th><th>Vers</th><th>Réf.</th><th>Par</th></tr></thead>
-    <tbody>${movements.length?movements.map(m=>{
-      const p=products.find(x=>x.id===m.product_id);
-      const lf=locations.find(x=>x.id===m.location_from);
-      const lt=locations.find(x=>x.id===m.location_to);
-      const cols={receive:'green',reduce:'red',transfer:'blue',inventory:'purple',import:'gray'};
-      return`<tr>
+    <table><thead><tr><th>Date</th><th>Produit</th><th>Qté</th><th>Type</th><th>Emplacement</th><th>Réf.</th><th>Par</th></tr></thead>
+    <tbody>${rows.length ? rows.map(m => {
+      const p  = products.find(x=>x.id===m.product_id);
+      const loc = locations.find(x=>x.id===m._loc);
+      const color = m._sign==='-' ? 'red' : cols[m.movement_type]||'green';
+      const isTransfer = m.movement_type==='transfer';
+      const locLabel = isTransfer
+        ? (m._display==='out'
+            ? `<span style="color:var(--red)"><i class="ti ti-arrow-up-right" style="font-size:11px"></i> ${escHtml(loc?.name||'—')}</span>`
+            : `<span style="color:var(--green)"><i class="ti ti-arrow-down-left" style="font-size:11px"></i> ${escHtml(loc?.name||'—')}</span>`)
+        : escHtml(loc?.name||'—');
+      return `<tr style="${isTransfer?'background:rgba(59,130,246,.04)':''}">
         <td style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${fmtDate(m.created_at)}</td>
         <td style="font-weight:500;font-size:12px">${escHtml(p?.name||'—')}</td>
-        <td style="font-family:var(--font-mono);color:var(--${cols[m.movement_type]||'gray'})">${m.quantity>0?'+':''}${m.quantity}</td>
-        <td><span class="badge badge-${cols[m.movement_type]||'gray'}">${m.movement_type||'—'}</span></td>
-        <td class="mono">${escHtml(lf?.name||'—')}</td>
-        <td class="mono">${escHtml(lt?.name||'—')}</td>
+        <td style="font-family:var(--font-mono);font-weight:700;color:var(--${color})">${m._sign}${Math.abs(m.quantity)}</td>
+        <td><span class="badge badge-${cols[m.movement_type]||'gray'}">${typeLabel[m.movement_type]||m.movement_type}</span></td>
+        <td class="mono" style="font-size:12px">${locLabel}</td>
         <td class="mono">${escHtml(m.reference||'—')}</td>
         <td style="font-size:11px;color:var(--text3)">${escHtml(m.user_email||'—')}</td>
       </tr>`;
-    }).join(''):'<tr><td colspan="8" class="empty">Aucun mouvement</td></tr>'}
+    }).join('') : '<tr><td colspan="7" class="empty">Aucun mouvement</td></tr>'}
     </tbody></table></div>`;
 }
 
@@ -1493,16 +1514,30 @@ async function showProd(id) {
   const cols = {receive:'green', reduce:'red', transfer:'blue', inventory:'purple', import:'gray'};
   const typeLabels = {receive:'Réception', reduce:'Sortie', transfer:'Transfert', inventory:'Inventaire', import:'Import'};
 
-  const historyRows = (history||[]).length ? (history||[]).map(m => {
-    const lf = locations.find(x=>x.id===m.location_from);
-    const lt = locations.find(x=>x.id===m.location_to);
-    const col = cols[m.movement_type]||'gray';
-    const isOut = m.movement_type==='reduce' || (m.movement_type==='transfer' && m.location_from);
-    return `<tr>
+  // Expand transfers into 2 rows (sortie + entrée)
+  const histExpanded = [];
+  (history||[]).forEach(m => {
+    if(m.movement_type==='transfer' && m.location_from && m.location_to) {
+      histExpanded.push({...m, _sign:'-', _loc:m.location_from, _dir:'out'});
+      histExpanded.push({...m, _sign:'+', _loc:m.location_to,   _dir:'in'});
+    } else {
+      const sign = (m.movement_type==='reduce'||(m.location_from&&!m.location_to)) ? '-' : '+';
+      histExpanded.push({...m, _sign:sign, _loc:m.location_from||m.location_to, _dir:'single'});
+    }
+  });
+
+  const historyRows = histExpanded.length ? histExpanded.map(m => {
+    const loc = locations.find(x=>x.id===m._loc);
+    const col = m._sign==='-' ? 'red' : cols[m.movement_type]||'green';
+    const isTransfer = m.movement_type==='transfer';
+    const locStr = isTransfer
+      ? (m._dir==='out' ? `↑ ${loc?.name||'?'}` : `↓ ${loc?.name||'?'}`)
+      : (loc?.name||'—');
+    return `<tr style="${isTransfer?'background:rgba(59,130,246,.04)':''}">
       <td style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${m.created_at ? new Date(m.created_at).toLocaleString('fr-CA') : '—'}</td>
-      <td><span class="badge badge-${col}">${typeLabels[m.movement_type]||m.movement_type}</span></td>
-      <td style="font-family:var(--font-mono);font-weight:600;color:var(--${col})">${m.quantity>0&&m.movement_type!=='reduce'?'+':'−'}${Math.abs(m.quantity)}</td>
-      <td style="font-size:11px;color:var(--text2)">${escHtml(lf?.name||'')}${lf&&lt?' → ':''}${escHtml(lt?.name||'')}</td>
+      <td><span class="badge badge-${cols[m.movement_type]||'gray'}">${typeLabels[m.movement_type]||m.movement_type}</span></td>
+      <td style="font-family:var(--font-mono);font-weight:600;color:var(--${col})">${m._sign}${Math.abs(m.quantity)}</td>
+      <td style="font-size:11px;color:var(--text2)">${escHtml(locStr)}</td>
       <td style="font-size:11px;color:var(--text3)">${escHtml(m.reference||'—')}</td>
       <td style="font-size:11px;color:var(--text3)">${escHtml(m.user_email||'—')}</td>
     </tr>`;
