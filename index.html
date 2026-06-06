@@ -124,7 +124,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 .detail-cell{background:var(--bg1);padding:11px 14px}
 .detail-cell-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px;font-weight:600}
 .detail-cell-value{font-size:14px;font-weight:500}
-.modal-footer{display:flex;justify-content:flex-end;gap:7px;padding:14px 18px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--bg1);flex-wrap:wrap}
+.modal-footer{display:flex;justify-content:space-between;align-items:center;gap:7px;padding:14px 18px;border-top:1px solid var(--border);position:sticky;bottom:0;background:var(--bg1);flex-wrap:wrap}
 /* ── MOBILE ── */
 @media(max-width:768px){
   .sidebar{display:none!important}
@@ -1766,11 +1766,11 @@ async function showProd(id) {
       </div>
     </div>
   `, [
-    {label:'<i class="ti ti-check"></i> Sauvegarder', cls:'btn-primary', action:`saveProdThreshold(${id})`},
-    {label:'<i class="ti ti-pencil"></i> Modifier',   cls:'btn-amber',   action:`openEditProduct(${id})`},
-    {label:'Transférer',  cls:'btn-success', action:`closeModal();goTo('transfer',${id})`},
-    {label:'Réduire',     cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
-    {label:'<i class=\"ti ti-trash\"></i> Supprimer', cls:'btn-danger', action:`confirmDeleteProduct(${id})`},
+    {label:'<i class="ti ti-trash"></i>',         cls:'btn-danger',  action:`confirmDeleteProduct(${id})`},
+    {label:'Réduire',                              cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
+    {label:'Transférer',                           cls:'btn-success', action:`closeModal();goTo('transfer',${id})`},
+    {label:'<i class="ti ti-pencil"></i> Modifier',cls:'btn-amber',   action:`openEditProduct(${id})`},
+    {label:'<i class="ti ti-check"></i> Sauvegarder', cls:'btn-primary', action:`saveProdThresholdAndClose(${id})`},
   ]);
 }
 
@@ -1897,15 +1897,16 @@ async function saveProdThreshold(id) {
   const val = document.getElementById('prod-threshold')?.value;
   const threshold = val === '' ? null : parseInt(val);
   const { error } = await sb.from('products').update({ alert_threshold: threshold }).eq('id', id);
-  if(error) {
-    toast('Colonne manquante — voir console','error');
-    console.warn('Add column: ALTER TABLE public.products ADD COLUMN IF NOT EXISTS alert_threshold integer;');
-    return;
-  }
+  if(error) { toast('Erreur: '+error.message,'error'); return; }
   const p = products.find(x=>x.id===id);
   if(p) p.alert_threshold = threshold;
   updateAlerts();
-  toast(threshold !== null ? `✓ Seuil de ${threshold} unités pour ce produit` : '✓ Seuil global utilisé', 'success');
+  toast(threshold !== null ? `✓ Seuil de ${threshold} unités` : '✓ Seuil global utilisé', 'success');
+}
+
+async function saveProdThresholdAndClose(id) {
+  await saveProdThreshold(id);
+  closeModal();
 }
 
 async function toggleAlertEnabled(id) {
@@ -3071,8 +3072,13 @@ function setBcStatus(html){const e=document.getElementById('bc-status');if(e)e.i
 function openModal(title,body,buttons=[]) {
   document.getElementById('modal-title').textContent=title;
   document.getElementById('modal-body').innerHTML=body;
+  // First button goes left (if danger/destructive), rest go right
+  const danger  = buttons.filter(b=>b.cls?.includes('danger'));
+  const others  = buttons.filter(b=>!b.cls?.includes('danger'));
+  const mkBtn   = b=>`<button class="btn ${b.cls||''}" onclick="${b.action}">${b.label}</button>`;
   document.getElementById('modal-footer').innerHTML=
-    buttons.map(b=>`<button class="btn ${b.cls||''}" onclick="${b.action}">${b.label}</button>`).join('');
+    `<div style="display:flex;gap:7px">${danger.map(mkBtn).join('')}</div>`+
+    `<div style="display:flex;gap:7px">${others.map(mkBtn).join('')}</div>`;
   document.getElementById('modal-overlay').classList.add('show');
 }
 function closeModal(){document.getElementById('modal-overlay').classList.remove('show');}
