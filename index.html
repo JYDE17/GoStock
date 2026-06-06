@@ -660,7 +660,7 @@ async function loadAll() {
       {data:prods},  {data:locs}, {data:cats}, {data:u},
       {data:stocks}, {data:moves}
     ] = await Promise.all([
-      sb.from('products').select('*').eq('active',true).order('name'),
+      sb.from('products').select('*,alert_enabled').eq('active',true).order('name'),
       sb.from('locations').select('*').eq('active',true).order('name'),
       sb.from('categories').select('*').order('name'),
       sb.from('uoms').select('*').order('name'),
@@ -866,10 +866,14 @@ async function quickToggleAlert(e, id) {
   const newVal = p.alert_enabled === false ? true : false;
   const {error} = await sb.from('products').update({alert_enabled:newVal}).eq('id',id);
   if(error){toast('Erreur: '+error.message,'error');return;}
+  // Update local state immediately
   p.alert_enabled = newVal;
   updateAlerts();
   toast(newVal?`✓ Alertes activées — ${p.name}`:`✓ Alertes désactivées — ${p.name}`,'success');
-  vAlerts(document.getElementById('main-content'));
+  // Refresh current view
+  const c = document.getElementById('main-content');
+  if(currentView==='alerts') vAlerts(c);
+  else if(currentView==='dashboard') vDashboard(c);
 }
 
 let alertFilter = 'all';
@@ -1929,6 +1933,8 @@ async function toggleAlertEnabled(id) {
 
   updateAlerts();
   toast(newVal ? `✓ Alertes activées pour ${p.name}` : `✓ Alertes désactivées pour ${p.name}`, 'success');
+  // Si on revient sur le dashboard, le rafraîchir aussi
+  if(currentView==='dashboard') renderView('dashboard');
 }
 
 
