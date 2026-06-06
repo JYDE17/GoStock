@@ -700,9 +700,9 @@ function getStatus(qty, productId) {
   return                    {label:'En stock',      color:'green', key:'instock'};
 }
 function updateAlerts() {
-  const cnt = products.filter(p=>getQty(p.id)<=4).length;
+  const cnt = products.filter(p => p.alert_enabled !== false && getQty(p.id) <= (p.alert_threshold ?? window._alertThreshold ?? 4)).length;
   const b = document.getElementById('alert-badge');
-  b.textContent=cnt; b.classList.toggle('hidden',cnt===0);
+  if(b){ b.textContent=cnt; b.classList.toggle('hidden',cnt===0); }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -836,7 +836,7 @@ function vDashboard(c) {
 }
 
 function alertRows(limit=999) {
-  const alerts=products.filter(p=>getQty(p.id)<=4).slice(0,limit);
+  const alerts=products.filter(p=>p.alert_enabled!==false && getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4)).slice(0,limit);
   if(!alerts.length) return '<div class="empty" style="padding:24px"><i class="ti ti-check" style="color:var(--green)"></i>Aucune alerte</div>';
   return`<table><thead><tr><th>Produit</th><th>Réf.</th><th>Qté</th><th>Statut</th></tr></thead><tbody>
     ${alerts.map(p=>{const s=getStatus(getQty(p.id), p.id);return`<tr onclick="showProd(${p.id})">
@@ -847,7 +847,141 @@ function alertRows(limit=999) {
     </tr>`;}).join('')}
   </tbody></table>`;
 }
-function vAlerts(c){c.innerHTML=`<div class="table-card">${alertRows()}</div>`;}
+
+function renderAlertToggle(p) {
+  const on = p.alert_enabled !== false;
+  return `<div onclick="quickToggleAlert(event,${p.id})" style="
+    width:40px;height:22px;border-radius:11px;position:relative;cursor:pointer;flex-shrink:0;
+    background:${on?'var(--amber)':'var(--bg3)'};
+    border:1px solid ${on?'var(--amber)':'var(--border2)'};
+    transition:all .2s" title="${on?'Désactiver l\'alerte':'Activer l\'alerte'}">
+    <div style="position:absolute;top:2px;left:${on?'18px':'2px'};width:16px;height:16px;
+      border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>
+  </div>`;
+}
+
+async function quickToggleAlert(e, id) {
+  e.stopPropagation();
+  const p = products.find(x=>x.id===id); if(!p) return;
+  const newVal = p.alert_enabled === false ? true : false;
+  const {error} = await sb.from('products').update({alert_enabled:newVal}).eq('id',id);
+  if(error){toast('Erreur: '+error.message,'error');return;}
+  p.alert_enabled = newVal;
+  updateAlerts();
+  toast(newVal?`✓ Alertes activées — ${p.name}`:`✓ Alertes désactivées — ${p.name}`,'success');
+  vAlerts(document.getElementById('main-content'));
+}
+
+let alertFilter = 'all';
+
+async function vAlerts(c) {
+  c = c || document.getElementById('main-content');
+
+  const lastRecv={}, totalRecv={};
+  movements.forEach(m=>{
+    if(m.movement_type==='receive'&&m.product_id){
+      if(!lastRecv[m.product_id]||new Date(m.created_at)>new Date(lastRecv[m.product_id].date))
+        lastRecv[m.product_id]={date:m.created_at,qty:m.quantity};
+      totalRecv[m.product_id]=(totalRecv[m.product_id]||0)+(m.quantity||0);
+    }
+  });
+
+  const enabled  = products.filter(p=>p.alert_enabled!==false);
+  const disabled = products.filter(p=>p.alert_enabled===false);
+  const all = enabled.filter(p=>getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4));
+  const out = all.filter(p=>getQty(p.id)<=0);
+  const low = all.filter(p=>getQty(p.id)>0);
+  let list  = alertFilter==='out'?out:alertFilter==='low'?low:all;
+  const isMob = window.innerWidth<=768;
+
+  const tableRow = p=>{
+    const qty=getQty(p.id),s=getStatus(qty,p.id);
+    const lr=lastRecv[p.id],tr=totalRecv[p.id];
+    return`<tr onclick="showProd(${p.id})">
+      <td style="font-weight:500">${escHtml(p.name)}</td>
+      <td class="mono">${escHtml(p.reference||'—')}</td>
+      <td style="font-family:var(--font-mono)">${Math.round(qty)}</td>
+      <td><span class="badge badge-${s.color}">${s.label}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${lr?fmtDate(lr.date)+' <span style="color:var(--green);font-family:var(--font-mono)">+'+lr.qty+'</span>':'<span style="color:var(--text3)">—</span>'}</td>
+      <td style="font-family:var(--font-mono);color:var(--blue)">${tr?Math.round(tr):'—'}</td>
+      <td onclick="event.stopPropagation()">${renderAlertToggle(p)}</td>
+    </tr>`;
+  };
+
+  if(isMob){
+    c.innerHTML=`
+    <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px">
+      <div class="pill ${alertFilter==='all'?'active':''}" onclick="alertFilter='all';vAlerts()">Toutes (${all.length})</div>
+      <div class="pill ${alertFilter==='out'?'active':''}" onclick="alertFilter='out';vAlerts()">Rupture (${out.length})</div>
+      <div class="pill ${alertFilter==='low'?'active':''}" onclick="alertFilter='low';vAlerts()">Faible (${low.length})</div>
+    </div>
+    ${list.length?list.map(p=>{
+      const qty=getQty(p.id),s=getStatus(qty,p.id);
+      const lr=lastRecv[p.id],tr=totalRecv[p.id];
+      return`<div style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:14px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:10px;cursor:pointer" onclick="showProd(${p.id})">${escHtml(p.name)}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <span class="badge badge-${s.color}">${s.label}</span>
+            ${renderAlertToggle(p)}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;cursor:pointer" onclick="showProd(${p.id})">
+          <div style="background:var(--bg2);border-radius:8px;padding:8px;text-align:center">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Stock</div>
+            <div style="font-size:22px;font-weight:800;font-family:var(--font-mono);color:var(--${s.color==='red'?'red':s.color==='amber'?'amber':'green'})">${Math.round(qty)}</div>
+          </div>
+          <div style="background:var(--bg2);border-radius:8px;padding:8px;text-align:center">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Dernière récep.</div>
+            <div style="font-size:11px;font-weight:600">${lr?new Date(lr.date).toLocaleDateString('fr-CA',{month:'short',day:'numeric'}):'—'}</div>
+            ${lr?`<div style="font-size:10px;color:var(--green)">+${lr.qty}</div>`:''}
+          </div>
+          <div style="background:var(--bg2);border-radius:8px;padding:8px;text-align:center">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">Total reçu</div>
+            <div style="font-size:22px;font-weight:800;font-family:var(--font-mono);color:var(--blue)">${tr?Math.round(tr):'—'}</div>
+          </div>
+        </div>
+        <button onclick="mobNav('receive')" style="width:100%;height:36px;background:var(--green-dim);border:1px solid var(--green);border-radius:8px;color:var(--green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-head);margin-top:10px">
+          <i class="ti ti-truck-delivery"></i> Réceptionner
+        </button>
+      </div>`;
+    }).join(''):'<div class="empty" style="padding:32px"><i class="ti ti-check" style="color:var(--green);display:block;font-size:48px;opacity:.8;margin-bottom:12px"></i>Aucune alerte !</div>'}
+    ${disabled.length?`
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;padding:8px 4px;margin-top:8px">
+      Alertes désactivées (${disabled.length})
+    </div>
+    ${disabled.map(p=>`<div style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:6px;display:flex;align-items:center;gap:12px;opacity:.6">
+      <div style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer" onclick="showProd(${p.id})">${escHtml(p.name)}</div>
+      ${renderAlertToggle(p)}
+    </div>`).join('')}`:``}`;
+  } else {
+    c.innerHTML=`<div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title">Alertes <span style="color:var(--text3);font-size:12px">${list.length}/${all.length}</span></div>
+        <div class="filter-pills">
+          <div class="pill ${alertFilter==='all'?'active':''}" onclick="alertFilter='all';vAlerts()">Toutes (${all.length})</div>
+          <div class="pill ${alertFilter==='out'?'active':''}" onclick="alertFilter='out';vAlerts()">Rupture (${out.length})</div>
+          <div class="pill ${alertFilter==='low'?'active':''}" onclick="alertFilter='low';vAlerts()">Stock faible (${low.length})</div>
+        </div>
+      </div>
+      <table><thead><tr>
+        <th>Produit</th><th>Réf.</th><th>Qté</th><th>Statut</th>
+        <th>Dernière réception</th><th>Total reçu</th><th>Alerte</th>
+      </tr></thead>
+      <tbody>${list.length?list.map(tableRow).join(''):'<tr><td colspan="7" class="empty" style="padding:24px"><i class="ti ti-check" style="color:var(--green)"></i> Aucune alerte</td></tr>'}</tbody>
+      </table>
+    </div>
+    ${disabled.length?`<div class="table-card" style="margin-top:16px;opacity:.7">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title" style="color:var(--text3)"><i class="ti ti-bell-off" style="margin-right:6px"></i>Alertes désactivées (${disabled.length})</div>
+      </div>
+      <table><thead><tr><th>Produit</th><th>Réf.</th><th>Qté</th><th>Statut</th><th>Dernière réception</th><th>Total reçu</th><th>Alerte</th></tr></thead>
+      <tbody>${disabled.map(tableRow).join('')}</tbody></table>
+    </div>`:''}`;
+  }
+}
+
+
 
 function vProducts(c) {
   c=c||document.getElementById('main-content');
@@ -1575,20 +1709,46 @@ async function showProd(id) {
         ${allLocLines || '<div style="padding:14px 0;font-size:13px;color:var(--text3);text-align:center">Aucun stock enregistré</div>'}
       </div>
 
-      <!-- Seuil d'alerte personnalisé -->
-      <div style="background:var(--amber-dim);border:1px solid rgba(245,166,35,.25);border-radius:8px;padding:14px 16px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <i class="ti ti-bell" style="color:var(--amber);font-size:16px"></i>
-          <span style="font-size:13px;font-weight:600">Seuil d'alerte pour ce produit</span>
-          <span style="font-size:11px;color:var(--text3);margin-left:auto">Seuil global : ${window._alertThreshold||4}</span>
+      <!-- Alertes : toggle ON/OFF + seuil -->
+      <div style="background:var(--amber-dim);border:1px solid rgba(245,166,35,.25);border-radius:10px;padding:14px 16px">
+        <!-- Toggle ON/OFF -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <i class="ti ti-bell" style="color:var(--amber);font-size:16px"></i>
+            <span style="font-size:13px;font-weight:600">Alertes pour ce produit</span>
+          </div>
+          <!-- Toggle switch -->
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <span style="font-size:12px;color:var(--text3)" id="alert-toggle-label">${p.alert_enabled===false?'Désactivé':'Activé'}</span>
+            <div id="alert-toggle" onclick="toggleAlertEnabled(${id})" style="
+              width:44px;height:24px;border-radius:12px;position:relative;cursor:pointer;
+              background:${p.alert_enabled===false?'var(--bg3)':'var(--amber)'};
+              border:1px solid ${p.alert_enabled===false?'var(--border2)':'var(--amber)'};
+              transition:all .2s
+            ">
+              <div style="
+                position:absolute;top:2px;
+                left:${p.alert_enabled===false?'2px':'20px'};
+                width:18px;height:18px;border-radius:50%;
+                background:#fff;transition:left .2s;
+                box-shadow:0 1px 3px rgba(0,0,0,.3)
+              " id="alert-toggle-knob"></div>
+            </div>
+          </label>
         </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <input id="prod-threshold" type="number" min="0" max="9999" class="form-input" style="width:90px;text-align:center" value="${threshold}" placeholder="${window._alertThreshold||4}">
-          <span style="font-size:13px;color:var(--text2)">unités</span>
-          <button class="btn btn-amber" style="height:36px" onclick="saveProdThreshold(${id})"><i class="ti ti-check"></i> Sauvegarder</button>
-          <button class="btn" style="height:36px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Global</button>
+        <!-- Seuil (masqué si désactivé) -->
+        <div id="alert-threshold-section" style="display:${p.alert_enabled===false?'none':''}">
+          <div style="display:flex;align-items:center;gap:10px">
+            <input id="prod-threshold" type="number" min="0" max="9999" class="form-input" style="width:80px;text-align:center" value="${threshold}" placeholder="${window._alertThreshold||4}">
+            <span style="font-size:13px;color:var(--text2)">unités</span>
+            <button class="btn btn-amber" style="height:34px" onclick="saveProdThreshold(${id})"><i class="ti ti-check"></i> Sauvegarder</button>
+            <button class="btn" style="height:34px;font-size:12px" onclick="document.getElementById('prod-threshold').value='';saveProdThreshold(${id})" title="Utiliser le seuil global"><i class="ti ti-refresh"></i> Global</button>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:7px">Seuil global : ${window._alertThreshold||4} unités · laisse vide pour l'utiliser</div>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">Laisse vide pour utiliser le seuil global (${window._alertThreshold||4} unités)</div>
+        <div id="alert-disabled-msg" style="display:${p.alert_enabled===false?'':'none'};font-size:12px;color:var(--text3)">
+          Ce produit est exclu des alertes et du comptage de stock faible.
+        </div>
       </div>
     </div>
 
@@ -1734,17 +1894,44 @@ async function saveProdThreshold(id) {
   const threshold = val === '' ? null : parseInt(val);
   const { error } = await sb.from('products').update({ alert_threshold: threshold }).eq('id', id);
   if(error) {
-    // Column might not exist yet — add it
     toast('Colonne manquante — voir console','error');
     console.warn('Add column: ALTER TABLE public.products ADD COLUMN IF NOT EXISTS alert_threshold integer;');
     return;
   }
-  // Update local state
   const p = products.find(x=>x.id===id);
   if(p) p.alert_threshold = threshold;
   updateAlerts();
   toast(threshold !== null ? `✓ Seuil de ${threshold} unités pour ce produit` : '✓ Seuil global utilisé', 'success');
 }
+
+async function toggleAlertEnabled(id) {
+  const p = products.find(x=>x.id===id); if(!p) return;
+  const newVal = p.alert_enabled === false ? true : false;
+  const { error } = await sb.from('products').update({ alert_enabled: newVal }).eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  p.alert_enabled = newVal;
+
+  // Update toggle UI without closing modal
+  const toggle    = document.getElementById('alert-toggle');
+  const knob      = document.getElementById('alert-toggle-knob');
+  const label     = document.getElementById('alert-toggle-label');
+  const section   = document.getElementById('alert-threshold-section');
+  const disabledMsg = document.getElementById('alert-disabled-msg');
+
+  if(toggle){
+    toggle.style.background = newVal ? 'var(--amber)' : 'var(--bg3)';
+    toggle.style.borderColor = newVal ? 'var(--amber)' : 'var(--border2)';
+  }
+  if(knob)  knob.style.left  = newVal ? '20px' : '2px';
+  if(label) label.textContent = newVal ? 'Activé' : 'Désactivé';
+  if(section)    section.style.display    = newVal ? '' : 'none';
+  if(disabledMsg) disabledMsg.style.display = newVal ? 'none' : '';
+
+  updateAlerts();
+  toast(newVal ? `✓ Alertes activées pour ${p.name}` : `✓ Alertes désactivées pour ${p.name}`, 'success');
+}
+
+
 
 
 
