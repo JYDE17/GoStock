@@ -1766,10 +1766,10 @@ async function showProd(id) {
       </div>
     </div>
   `, [
-    {label:'<i class="ti ti-pencil"></i> Modifier', cls:'btn-amber', action:`openEditProduct(${id})`},
-    {label:'Réceptionner', cls:'btn-success', action:`closeModal();goTo('receive',${id})`},
-    {label:'Transférer',   cls:'btn-primary', action:`closeModal();goTo('transfer',${id})`},
-    {label:'Réduire',      cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
+    {label:'<i class="ti ti-check"></i> Sauvegarder', cls:'btn-primary', action:`saveProdThreshold(${id})`},
+    {label:'<i class="ti ti-pencil"></i> Modifier',   cls:'btn-amber',   action:`openEditProduct(${id})`},
+    {label:'Transférer',  cls:'btn-success', action:`closeModal();goTo('transfer',${id})`},
+    {label:'Réduire',     cls:'btn-danger',  action:`closeModal();goTo('reduce',${id})`},
     {label:'<i class=\"ti ti-trash\"></i> Supprimer', cls:'btn-danger', action:`confirmDeleteProduct(${id})`},
   ]);
 }
@@ -1961,7 +1961,7 @@ function showLoc(id) {
           <span style="font-family:var(--font-mono);color:var(--blue)">${Math.round(b.qty)}</span>
         </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--text3)">Aucun produit</div>'}
     </div>
-  `,[]);
+  `,[{label:'Fermer',cls:'',action:'closeModal()'}]);
 }
 
 function openNewLoc() {
@@ -1973,7 +1973,7 @@ function openNewLoc() {
         ${locations.filter(l=>l.usage==='internal').map(l=>`<option value="${l.id}">${escHtml(l.name)}</option>`).join('')}
       </select>
     </div>
-  `,[{label:'Créer',cls:'btn-primary',action:'submitNewLoc()'}]);
+  `,[{label:'Fermer',cls:'',action:'closeModal()'},{label:'Créer',cls:'btn-primary',action:'submitNewLoc()'}]);
 }
 async function submitNewLoc() {
   const name=document.getElementById('nl-name')?.value?.trim();
@@ -2051,7 +2051,7 @@ function openInvite() {
         <option value="admin">Admin — accès complet</option>
       </select>
     </div>
-  `, [{label:'Créer le compte', cls:'btn-primary', action:'submitCreateUser()'}]);
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Créer le compte', cls:'btn-primary', action:'submitCreateUser()'}]);
 }
 
 function genPw() {
@@ -2175,7 +2175,7 @@ function openAddUom() {
         `<span style="padding:3px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:20px;font-size:12px;cursor:pointer" onclick="document.getElementById('uom-name').value='${s}'">${s}</span>`
       ).join('')}
     </div>
-  `, [{label:'Ajouter', cls:'btn-primary', action:'submitAddUom()'}]);
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Ajouter', cls:'btn-primary', action:'submitAddUom()'}]);
 }
 
 async function submitAddUom() {
@@ -2194,7 +2194,7 @@ function editUom(id, currentName) {
     <div class="form-group"><label class="form-label">Nom *</label>
       <input id="uom-edit-name" type="text" class="form-input" value="${escHtml(currentName)}">
     </div>
-  `, [{label:'Sauvegarder', cls:'btn-primary', action:`submitEditUom(${id})`}]);
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Sauvegarder', cls:'btn-primary', action:`submitEditUom(${id})`}]);
 }
 
 async function submitEditUom(id) {
@@ -2224,7 +2224,7 @@ function openAddCat() {
     <div class="form-group"><label class="form-label">Nom *</label>
       <input id="cat-name" type="text" class="form-input" placeholder="ex: Breuvage, Karting, Maintenance…">
     </div>
-  `, [{label:'Ajouter', cls:'btn-primary', action:'submitAddCat()'}]);
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Ajouter', cls:'btn-primary', action:'submitAddCat()'}]);
 }
 
 async function submitAddCat() {
@@ -2243,7 +2243,7 @@ function editCat(id, currentName) {
     <div class="form-group"><label class="form-label">Nom *</label>
       <input id="cat-edit-name" type="text" class="form-input" value="${escHtml(currentName)}">
     </div>
-  `, [{label:'Sauvegarder', cls:'btn-primary', action:`submitEditCat(${id})`}]);
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Sauvegarder', cls:'btn-primary', action:`submitEditCat(${id})`}]);
 }
 
 async function submitEditCat(id) {
@@ -3071,7 +3071,7 @@ function setBcStatus(html){const e=document.getElementById('bc-status');if(e)e.i
 function openModal(title,body,buttons=[]) {
   document.getElementById('modal-title').textContent=title;
   document.getElementById('modal-body').innerHTML=body;
-  document.getElementById('modal-footer').innerHTML=`<button class="btn" onclick="closeModal()">Fermer</button>`+
+  document.getElementById('modal-footer').innerHTML=
     buttons.map(b=>`<button class="btn ${b.cls||''}" onclick="${b.action}">${b.label}</button>`).join('');
   document.getElementById('modal-overlay').classList.add('show');
 }
