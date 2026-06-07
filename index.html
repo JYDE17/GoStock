@@ -3139,7 +3139,7 @@ function exportCSV() {
   a.download='inventaire_goplex.csv'; a.click();
 }
 
-function exportCommandeExcel(catId=null) {
+async function exportCommandeExcel(catId=null) {
   const toOrder = products.filter(p =>
     p.alert_enabled !== false &&
     getQty(p.id) <= (p.alert_threshold ?? window._alertThreshold ?? 4) &&
@@ -3153,41 +3153,145 @@ function exportCommandeExcel(catId=null) {
 
   if(!toOrder.length){ toast('Aucun produit à commander pour cette sélection !','info'); return; }
 
-  const today   = new Date().toLocaleDateString('fr-CA');
-  const catName = catId ? (categories.find(c=>c.id==catId)?.name||'Catégorie') : 'Toutes catégories';
+  // Load SheetJS dynamically
+  if(!window.XLSX) {
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const today    = new Date().toLocaleDateString('fr-CA');
+  const catName  = catId ? (categories.find(c=>c.id==catId)?.name||'Catégorie') : 'Toutes catégories';
   const threshold = window._alertThreshold ?? 4;
+  const wb = XLSX.utils.book_new();
 
-  const rows = [
-    [`LISTE DE COMMANDE — GoPlex · ${catName}`,'','','','','',`Générée le ${today}`],
-    [],
-    ['Produit','Référence','Code-barres','Catégorie','Stock actuel','Seuil alerte','Statut','Qté à commander','Prix vente','Coût unitaire','Notes'],
-  ];
-
-  toOrder.forEach(p => {
+  // ── Build data rows ──────────────────────────────────────
+  const headers = ['Produit','Référence','Catégorie','Stock actuel','Seuil','Statut','Qté à commander','Notes'];
+  const dataRows = toOrder.map(p => {
     const qty      = Math.round(getQty(p.id));
     const seuil    = p.alert_threshold ?? threshold;
-    const cat      = categories.find(c=>c.id===p.category_id)?.name || '';
+    const cat      = categories.find(c=>c.id===p.category_id)?.name || '—';
     const s        = getStatus(qty, p.id);
     const suggested = Math.max(1, (seuil*2) - qty);
-    rows.push([p.name, p.reference||'', p.barcode||'', cat, qty, seuil, s.label, suggested, p.sale_price||0, p.cost_price||0, '']);
+    return [p.name, p.reference||'—', cat, qty, seuil, s.label, suggested, ''];
   });
 
-  rows.push([]);
-  rows.push(['','','',`${toOrder.length} produits`,'','','','','','','']);
+  const wsData = [headers, ...dataRows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-  const csv = '\uFEFF' + rows.map(r =>
-    r.map(c => {
-      const s = String(c ?? '');
-      return (s.includes(';')||s.includes('"')||s.includes('\n'))
-        ? `"${s.replace(/"/g,'""')}"` : s;
-    }).join(';')
-  ).join('\r\n');
+  // ── Column widths ────────────────────────────────────────
+  ws['!cols'] = [
+    {wch:32}, // Produit
+    {wch:16}, // Référence
+    {wch:18}, // Catégorie
+    {wch:14}, // Stock actuel
+    {wch:10}, // Seuil
+    {wch:14}, // Statut
+    {wch:18}, // Qté à commander
+    {wch:28}, // Notes
+  ];
 
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = `lot_dachat_goplex_${catId?catName.replace(/\s+/g,'_'):'complet'}_${today.replace(/\//g,'-')}.csv`;
-  a.click();
-  toast(`✓ ${toOrder.length} produits exportés (${catName})`,'success');
+  // ── Freeze header row ────────────────────────────────────
+  ws['!freeze'] = {xSplit:0, ySplit:1};
+
+  // ── Cell styles (header + data) ──────────────────────────
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  // Header row style
+  for(let c = range.s.c; c <= range.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({r:0, c});
+    if(!ws[addr]) continue;
+    ws[addr].s = {
+      fill:   {fgColor:{rgb:'1A1A1E'}},
+      font:   {bold:true, color:{rgb:'C9A84C'}, sz:11, name:'Calibri'},
+      border: {bottom:{style:'medium', color:{rgb:'C9A84C'}}},
+      alignment: {horizontal:'center', vertical:'center'},
+    };
+  }
+
+  // Data rows
+  toOrder.forEach((p, i) => {
+    const row = i + 1; // 0 = header
+    const qty = Math.round(getQty(p.id));
+    const isOut = qty <= 0;
+    const isLow = !isOut;
+    const rowBg  = isOut ? 'FFEAEA' : isLow ? 'FFF8E8' : 'FFFFFF';
+    const altBg  = isOut ? 'FFD6D6' : isLow ? 'FFF2D0' : 'F8F8F8';
+    const bg     = i%2===0 ? rowBg : altBg;
+
+    for(let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({r:row, c});
+      if(!ws[addr]) ws[addr] = {t:'s', v:''};
+      const isNumCol = c===3||c===4||c===6;
+      const isStatusCol = c===5;
+      let fontColor = '333333';
+      if(isStatusCol) fontColor = isOut ? 'CC0000' : 'B85C00';
+      if(c===6) fontColor = '1A6B3C'; // Qté à commander en vert
+      ws[addr].s = {
+        fill: {fgColor:{rgb:bg}},
+        font: {
+          name:'Calibri', sz:10,
+          bold: c===0||c===6,
+          color:{rgb:fontColor},
+        },
+        border: {
+          bottom:{style:'thin', color:{rgb:'DDDDDD'}},
+          right: {style:'thin', color:{rgb:'EEEEEE'}},
+        },
+        alignment: {
+          horizontal: isNumCol ? 'center' : 'left',
+          vertical: 'center',
+        },
+      };
+    }
+  });
+
+  // Notes column — light dashed border hint
+  for(let r=1; r<=toOrder.length; r++){
+    const addr = XLSX.utils.encode_cell({r, c:7});
+    if(ws[addr]) ws[addr].s = {
+      ...ws[addr].s,
+      fill:{fgColor:{rgb:'F5F5F5'}},
+      border:{
+        bottom:{style:'thin',color:{rgb:'DDDDDD'}},
+        left:{style:'dashed',color:{rgb:'CCCCCC'}},
+        right:{style:'thin',color:{rgb:'DDDDDD'}},
+      },
+    };
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Lot d\'achat');
+
+  // ── Summary sheet ────────────────────────────────────────
+  const rupture = toOrder.filter(p=>getQty(p.id)<=0);
+  const faible  = toOrder.filter(p=>getQty(p.id)>0);
+  const summaryData = [
+    ['Résumé — Lot d\'achat GoPlex'],
+    [],
+    ['Généré le', today],
+    ['Catégorie', catName],
+    [],
+    ['Statut','Nombre de produits'],
+    ['Rupture de stock', rupture.length],
+    ['Stock faible', faible.length],
+    ['Total à commander', toOrder.length],
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+  wsSummary['!cols'] = [{wch:28},{wch:20}];
+  // Title style
+  if(wsSummary['A1']) wsSummary['A1'].s = {
+    font:{bold:true, sz:14, color:{rgb:'C9A84C'}, name:'Calibri'},
+    fill:{fgColor:{rgb:'1A1A1E'}},
+  };
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Résumé');
+
+  // ── Download ─────────────────────────────────────────────
+  const filename = `lot_dachat_${catId?catName.replace(/\s+/g,'_'):'complet'}_${today.replace(/\//g,'-')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`✓ ${toOrder.length} produits — ${filename}`,'success');
 }
 
 function openExportModal() {
