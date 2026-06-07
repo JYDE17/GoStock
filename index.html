@@ -382,7 +382,23 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <button class="btn" id="mob-refresh" onclick="loadAll()" title="Actualiser"><i class="ti ti-refresh" id="refresh-icon"></i></button>
     <button class="btn" onclick="loadAll()" style="display:none" id="desk-refresh"><i class="ti ti-refresh"></i> Actualiser</button>
     <button class="bc-btn" onclick="openBarcodeScanner('general')"><i class="ti ti-barcode"></i> Scanner</button>
-    <button class="btn btn-primary" onclick="exportCSV()"><i class="ti ti-download"></i> CSV</button>
+    <!-- Menu Rapports -->
+    <div style="position:relative" id="rapports-wrap">
+      <button class="btn" onclick="toggleRapports()" style="gap:6px">
+        <i class="ti ti-report-analytics"></i> Rapports <i class="ti ti-chevron-down" style="font-size:11px;color:var(--text3)"></i>
+      </button>
+      <div id="rapports-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--bg1);border:1px solid var(--border2);border-radius:10px;min-width:220px;z-index:300;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+        <div style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;border-bottom:1px solid var(--border)">Rapports</div>
+        <div class="user-dropdown-item" onclick="openExportModal();toggleRapports()">
+          <i class="ti ti-shopping-cart" style="color:var(--accent)"></i>Lot d'achat
+          <span style="font-size:10px;color:var(--text3);margin-left:auto">Alertes</span>
+        </div>
+        <div class="user-dropdown-item" onclick="exportCSV();toggleRapports()">
+          <i class="ti ti-download" style="color:var(--blue)"></i>Inventaire complet
+          <span style="font-size:10px;color:var(--text3);margin-left:auto">CSV</span>
+        </div>
+      </div>
+    </div>
     <div style="position:relative" id="user-wrap">
       <div class="user-menu-btn" onclick="toggleUserMenu()">
         <div class="user-avatar" id="u-avatar">?</div>
@@ -632,9 +648,17 @@ async function onSignedIn(u) {
   await loadAll();
   restoreNavState();
 } { document.getElementById('u-dropdown').classList.toggle('show'); }
+function toggleRapports(){
+  const dd=document.getElementById('rapports-dropdown');
+  if(dd) dd.style.display=dd.style.display==='none'?'':'none';
+}
 document.addEventListener('click', e => {
   if(!document.getElementById('user-wrap')?.contains(e.target))
     document.getElementById('u-dropdown')?.classList.remove('show');
+  if(!document.getElementById('rapports-wrap')?.contains(e.target)){
+    const dd=document.getElementById('rapports-dropdown');
+    if(dd) dd.style.display='none';
+  }
 });
 
 // ══════════════════════════════════════════════════════════
@@ -918,6 +942,9 @@ async function vAlerts(c) {
       <div class="pill ${alertFilter==='all'?'active':''}" onclick="alertFilter='all';vAlerts()">Toutes (${all.length})</div>
       <div class="pill ${alertFilter==='out'?'active':''}" onclick="alertFilter='out';vAlerts()">Rupture (${out.length})</div>
       <div class="pill ${alertFilter==='low'?'active':''}" onclick="alertFilter='low';vAlerts()">Faible (${low.length})</div>
+      <div class="pill" onclick="openExportModal()" style="background:var(--green-dim);border-color:var(--green);color:var(--green);white-space:nowrap">
+        <i class="ti ti-shopping-cart"></i> Lot d'achat
+      </div>
     </div>
     ${list.length?list.map(p=>{
       const qty=getQty(p.id),s=getStatus(qty,p.id);
@@ -967,6 +994,9 @@ async function vAlerts(c) {
           <div class="pill ${alertFilter==='out'?'active':''}" onclick="alertFilter='out';vAlerts()">Rupture (${out.length})</div>
           <div class="pill ${alertFilter==='low'?'active':''}" onclick="alertFilter='low';vAlerts()">Stock faible (${low.length})</div>
         </div>
+        <button class="btn btn-success" onclick="openExportModal()" style="margin-left:8px;white-space:nowrap">
+          <i class="ti ti-shopping-cart"></i> Lot d'achat
+        </button>
       </div>
       <table><thead><tr>
         <th>Produit</th><th>Réf.</th><th>Qté</th><th>Statut</th>
@@ -3107,6 +3137,112 @@ function exportCSV() {
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download='inventaire_goplex.csv'; a.click();
+}
+
+function exportCommandeExcel(catId=null) {
+  const toOrder = products.filter(p =>
+    p.alert_enabled !== false &&
+    getQty(p.id) <= (p.alert_threshold ?? window._alertThreshold ?? 4) &&
+    (catId === null || p.category_id == catId)
+  ).sort((a,b) => {
+    const qa=getQty(a.id), qb=getQty(b.id);
+    if(qa<=0&&qb>0) return -1;
+    if(qb<=0&&qa>0) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  if(!toOrder.length){ toast('Aucun produit à commander pour cette sélection !','info'); return; }
+
+  const today   = new Date().toLocaleDateString('fr-CA');
+  const catName = catId ? (categories.find(c=>c.id==catId)?.name||'Catégorie') : 'Toutes catégories';
+  const threshold = window._alertThreshold ?? 4;
+
+  const rows = [
+    [`LISTE DE COMMANDE — GoPlex · ${catName}`,'','','','','',`Générée le ${today}`],
+    [],
+    ['Produit','Référence','Code-barres','Catégorie','Stock actuel','Seuil alerte','Statut','Qté à commander','Prix vente','Coût unitaire','Notes'],
+  ];
+
+  toOrder.forEach(p => {
+    const qty      = Math.round(getQty(p.id));
+    const seuil    = p.alert_threshold ?? threshold;
+    const cat      = categories.find(c=>c.id===p.category_id)?.name || '';
+    const s        = getStatus(qty, p.id);
+    const suggested = Math.max(1, (seuil*2) - qty);
+    rows.push([p.name, p.reference||'', p.barcode||'', cat, qty, seuil, s.label, suggested, p.sale_price||0, p.cost_price||0, '']);
+  });
+
+  rows.push([]);
+  rows.push(['','','',`${toOrder.length} produits`,'','','','','','','']);
+
+  const csv = '\uFEFF' + rows.map(r =>
+    r.map(c => {
+      const s = String(c ?? '');
+      return (s.includes(';')||s.includes('"')||s.includes('\n'))
+        ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(';')
+  ).join('\r\n');
+
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `lot_dachat_goplex_${catId?catName.replace(/\s+/g,'_'):'complet'}_${today.replace(/\//g,'-')}.csv`;
+  a.click();
+  toast(`✓ ${toOrder.length} produits exportés (${catName})`,'success');
+}
+
+function openExportModal() {
+  // Build category options with counts
+  const alertProds = products.filter(p => p.alert_enabled!==false && getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4));
+  if(!alertProds.length){ toast('Aucun produit à commander !','info'); return; }
+
+  // Count per category
+  const catCounts = {};
+  alertProds.forEach(p => {
+    const key = p.category_id || '__none__';
+    catCounts[key] = (catCounts[key]||0)+1;
+  });
+
+  const catOptions = Object.entries(catCounts)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([cid, cnt]) => {
+      const cat = cid==='__none__' ? 'Sans catégorie' : (categories.find(c=>c.id==cid)?.name||'?');
+      return `<div onclick="exportCommandeExcel(${cid==='__none__'?'null':cid});closeModal()"
+        style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+               background:var(--bg2);border:1px solid var(--border);border-radius:8px;cursor:pointer;
+               transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-tag" style="color:var(--amber);font-size:16px"></i>
+          <span style="font-size:14px;font-weight:500">${escHtml(cat)}</span>
+        </div>
+        <span class="badge badge-amber">${cnt} produit${cnt>1?'s':''}</span>
+      </div>`;
+    }).join('');
+
+  openModal("Lot d'achat", `
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
+        ${alertProds.length} produit${alertProds.length>1?'s':''} en alerte au total — choisissez quoi exporter :
+      </div>
+      <!-- Export complet -->
+      <div onclick="exportCommandeExcel(null);closeModal()"
+        style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+               background:var(--accent-bg);border:2px solid var(--accent);border-radius:10px;
+               cursor:pointer;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-file-spreadsheet" style="color:var(--accent);font-size:20px"></i>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--accent)">Toutes les catégories</div>
+            <div style="font-size:11px;color:var(--text3)">Export complet de tous les produits à commander</div>
+          </div>
+        </div>
+        <span class="badge badge-orange">${alertProds.length} produits</span>
+      </div>
+      <!-- Par catégorie -->
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Par catégorie</div>
+      <div style="display:flex;flex-direction:column;gap:6px">${catOptions}</div>
+    </div>
+  `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
 }
 
 document.addEventListener('keydown',e=>{
