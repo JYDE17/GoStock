@@ -367,6 +367,14 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
   </div>
 
   <div class="nav-group">
+    <div class="nav-label" onclick="toggleNavGroup(this)">Rapports<i class="ti ti-chevron-down nav-chevron"></i></div>
+    <div class="nav-group-items">
+      <div class="nav-item" onclick="openExportModal()"><i class="ti ti-shopping-cart"></i>Lot d'achat</div>
+      <div class="nav-item" onclick="exportCSV()"><i class="ti ti-download"></i>Inventaire CSV</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
     <div class="nav-label" onclick="toggleNavGroup(this)">Outils<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
       <div class="nav-item" onclick="openBarcodeScanner('general')"><i class="ti ti-barcode"></i>Scanner</div>
@@ -382,23 +390,6 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <button class="btn" id="mob-refresh" onclick="loadAll()" title="Actualiser"><i class="ti ti-refresh" id="refresh-icon"></i></button>
     <button class="btn" onclick="loadAll()" style="display:none" id="desk-refresh"><i class="ti ti-refresh"></i> Actualiser</button>
     <button class="bc-btn" onclick="openBarcodeScanner('general')"><i class="ti ti-barcode"></i> Scanner</button>
-    <!-- Menu Rapports -->
-    <div style="position:relative" id="rapports-wrap">
-      <button class="btn" onclick="toggleRapports()" style="gap:6px">
-        <i class="ti ti-report-analytics"></i> Rapports <i class="ti ti-chevron-down" style="font-size:11px;color:var(--text3)"></i>
-      </button>
-      <div id="rapports-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--bg1);border:1px solid var(--border2);border-radius:10px;min-width:220px;z-index:300;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.4)">
-        <div style="padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;border-bottom:1px solid var(--border)">Rapports</div>
-        <div class="user-dropdown-item" onclick="openExportModal();toggleRapports()">
-          <i class="ti ti-shopping-cart" style="color:var(--accent)"></i>Lot d'achat
-          <span style="font-size:10px;color:var(--text3);margin-left:auto">Alertes</span>
-        </div>
-        <div class="user-dropdown-item" onclick="exportCSV();toggleRapports()">
-          <i class="ti ti-download" style="color:var(--blue)"></i>Inventaire complet
-          <span style="font-size:10px;color:var(--text3);margin-left:auto">CSV</span>
-        </div>
-      </div>
-    </div>
     <div style="position:relative" id="user-wrap">
       <div class="user-menu-btn" onclick="toggleUserMenu()">
         <div class="user-avatar" id="u-avatar">?</div>
