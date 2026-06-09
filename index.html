@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="GoPlex">
@@ -2395,22 +2396,13 @@ async function submitCreateUser() {
     if(error) throw error;
     if(!data.user) throw new Error('Utilisateur non créé — vérifiez la configuration Supabase');
 
-    // Mettre à jour le profil (rôle + nom) — attendre que le trigger l'ait créé
-    await new Promise(r => setTimeout(r, 800));
-    const { error: profErr } = await sb.from('profiles').update({
+    // Mettre à jour le profil immédiatement
+    await sb.from('profiles').upsert({
+      id:        data.user.id,
+      email,
       full_name: name,
       role,
-    }).eq('id', data.user.id);
-
-    if(profErr) {
-      // Fallback: upsert
-      await sb.from('profiles').upsert({
-        id: data.user.id,
-        email,
-        full_name: name,
-        role,
-      }, { onConflict: 'id' });
-    }
+    }, { onConflict: 'id' });
 
     // Si signUp a changé la session, restaurer la session admin
     const { data:newSession } = await sb.auth.getSession();
@@ -2422,6 +2414,9 @@ async function submitCreateUser() {
     toast(`✓ Compte créé pour ${name}`, 'success');
     closeModal();
     await vUsers(document.getElementById('main-content'));
+
+    // Proposer d'envoyer les instructions d'installation
+    setTimeout(() => openInstructions(name, email, pw), 300);
 
   } catch(e) {
     const msg = e.message?.includes('already registered')
@@ -3807,7 +3802,71 @@ async function exportCommandeExcel(catId=null) {
   toast(`✓ ${toOrder.length} produits — ${filename}`,'success');
 }
 
-function openExportModal() {
+function openInstructions(name, email, pw) {
+  const appUrl   = 'https://goplex.vercel.app';
+  const subject  = encodeURIComponent('GoPlex Inventaire — Accès à l\'application');
+  const body     = encodeURIComponent(
+`Bonjour ${name},
+
+Voici vos accès à l'application GoPlex Inventaire :
+
+🔗 Lien : ${appUrl}
+📧 Courriel : ${email}
+🔑 Mot de passe temporaire : ${pw}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 INSTALLER L'APP SUR IPHONE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Ouvrez Safari sur votre iPhone
+2. Allez sur : ${appUrl}
+3. Connectez-vous avec vos identifiants ci-dessus
+4. Appuyez sur l'icône Partager ⎙ (en bas de l'écran)
+5. Faites défiler et tapez "Sur l'écran d'accueil"
+6. Tapez "Ajouter"
+
+L'icône GoPlex apparaîtra sur votre écran d'accueil comme une vraie application.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖥️ SUR ORDINATEUR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Ouvrez simplement ${appUrl} dans votre navigateur.
+
+Pour toute question, contactez votre administrateur.
+
+— L'équipe GoPlex`
+  );
+
+  const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
+
+  openModal('Compte créé — Envoyer les instructions', `
+    <div style="background:var(--green-dim);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <i class="ti ti-check" style="color:var(--green);font-size:18px"></i>
+        <span style="font-size:14px;font-weight:600;color:var(--green)">Compte créé avec succès</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2)"><strong style="color:var(--text1)">${escHtml(name)}</strong> · ${escHtml(email)}</div>
+    </div>
+
+    <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+      Voulez-vous envoyer les instructions d'accès et d'installation à cet utilisateur ?
+    </div>
+
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:12px;color:var(--text2);line-height:1.8">
+      <div style="font-weight:600;color:var(--text1);margin-bottom:6px">Le courriel contiendra :</div>
+      <div><i class="ti ti-link" style="color:var(--accent);margin-right:6px"></i>Lien vers l'app</div>
+      <div><i class="ti ti-key" style="color:var(--accent);margin-right:6px"></i>Identifiants de connexion</div>
+      <div><i class="ti ti-brand-apple" style="color:var(--accent);margin-right:6px"></i>Étapes pour installer sur iPhone (Safari → Partager → Écran d'accueil)</div>
+      <div><i class="ti ti-device-desktop" style="color:var(--accent);margin-right:6px"></i>Instructions pour ordinateur</div>
+    </div>
+  `, [
+    {label:'Plus tard', cls:'', action:'closeModal()'},
+    {label:'<i class="ti ti-mail"></i> Ouvrir dans mon courriel', cls:'btn-primary', action:`window.open('${mailtoLink}');closeModal()`},
+  ]);
+}
+
+
   // Build category options with counts
   const alertProds = products.filter(p => p.alert_enabled!==false && getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4));
   if(!alertProds.length){ toast('Aucun produit à commander !','info'); return; }
@@ -3860,7 +3919,6 @@ function openExportModal() {
       <div style="display:flex;flex-direction:column;gap:6px">${catOptions}</div>
     </div>
   `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
-}
 
 document.addEventListener('keydown',e=>{
   if(e.key==='F2'||(e.ctrlKey&&e.key==='b')){e.preventDefault();openBarcodeScanner(currentView);}
