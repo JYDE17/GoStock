@@ -3866,7 +3866,7 @@ Pour toute question, contactez votre administrateur.
   ]);
 }
 
-
+function openExportModal() {
   // Build category options with counts
   const alertProds = products.filter(p => p.alert_enabled!==false && getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4));
   if(!alertProds.length){ toast('Aucun produit à commander !','info'); return; }
@@ -3919,6 +3919,7 @@ Pour toute question, contactez votre administrateur.
       <div style="display:flex;flex-direction:column;gap:6px">${catOptions}</div>
     </div>
   `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
+}
 
 document.addEventListener('keydown',e=>{
   if(e.key==='F2'||(e.ctrlKey&&e.key==='b')){e.preventDefault();openBarcodeScanner(currentView);}
