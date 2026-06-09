@@ -2233,7 +2233,18 @@ async function vUsers(c) {
   </div>`;
 }
 
-async function changeRole(uid,role){const {error}=await sb.from('profiles').update({role}).eq('id',uid);if(error)toast('Erreur: '+error.message,'error');else toast('Rôle mis à jour → '+role,'success');}
+async function changeRole(uid, role) {
+  const {error} = await sb.from('profiles').update({role}).eq('id', uid);
+  if(error) {
+    toast('Erreur: '+error.message, 'error');
+    // Revert select to current value
+    await vUsers(document.getElementById('main-content'));
+  } else {
+    toast('✓ Rôle mis à jour → '+role, 'success');
+    // Update local profile if it's the current user
+    if(uid === user?.id && profile) profile.role = role;
+  }
+}
 
 function openResetPassword(uid, email, name) {
   const newPw = genPw();
@@ -2384,13 +2395,22 @@ async function submitCreateUser() {
     if(error) throw error;
     if(!data.user) throw new Error('Utilisateur non créé — vérifiez la configuration Supabase');
 
-    // Mettre à jour le profil (rôle + nom)
-    await sb.from('profiles').upsert({
-      id: data.user.id,
-      email,
+    // Mettre à jour le profil (rôle + nom) — attendre que le trigger l'ait créé
+    await new Promise(r => setTimeout(r, 800));
+    const { error: profErr } = await sb.from('profiles').update({
       full_name: name,
       role,
-    }, { onConflict: 'id' });
+    }).eq('id', data.user.id);
+
+    if(profErr) {
+      // Fallback: upsert
+      await sb.from('profiles').upsert({
+        id: data.user.id,
+        email,
+        full_name: name,
+        role,
+      }, { onConflict: 'id' });
+    }
 
     // Si signUp a changé la session, restaurer la session admin
     const { data:newSession } = await sb.auth.getSession();
