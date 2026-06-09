@@ -3803,42 +3803,38 @@ async function exportCommandeExcel(catId=null) {
 }
 
 function openInstructions(name, email, pw) {
-  const appUrl   = 'https://goplex.vercel.app';
-  const subject  = encodeURIComponent('GoPlex Inventaire — Accès à l\'application');
-  const body     = encodeURIComponent(
-`Bonjour ${name},
-
-Voici vos accès à l'application GoPlex Inventaire :
-
-🔗 Lien : ${appUrl}
-📧 Courriel : ${email}
-🔑 Mot de passe temporaire : ${pw}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📱 INSTALLER L'APP SUR IPHONE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. Ouvrez Safari sur votre iPhone
-2. Allez sur : ${appUrl}
-3. Connectez-vous avec vos identifiants ci-dessus
-4. Appuyez sur l'icône Partager ⎙ (en bas de l'écran)
-5. Faites défiler et tapez "Sur l'écran d'accueil"
-6. Tapez "Ajouter"
-
-L'icône GoPlex apparaîtra sur votre écran d'accueil comme une vraie application.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🖥️ SUR ORDINATEUR
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Ouvrez simplement ${appUrl} dans votre navigateur.
-
-Pour toute question, contactez votre administrateur.
-
-— L'équipe GoPlex`
-  );
-
-  const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
+  const appUrl  = 'https://goplex.vercel.app';
+  const subject = encodeURIComponent('GoPlex Inventaire - Acces a l application');
+  const bodyLines = [
+    'Bonjour ' + name + ',',
+    '',
+    'Voici vos acces a l application GoPlex Inventaire :',
+    '',
+    'Lien : ' + appUrl,
+    'Courriel : ' + email,
+    'Mot de passe temporaire : ' + pw,
+    '',
+    '--- INSTALLER SUR IPHONE ---',
+    '',
+    '1. Ouvrez Safari sur votre iPhone',
+    '2. Allez sur : ' + appUrl,
+    '3. Connectez-vous avec vos identifiants',
+    '4. Appuyez sur l icone Partager (en bas de l ecran)',
+    '5. Faites defiler et tapez "Sur l ecran d accueil"',
+    '6. Tapez "Ajouter"',
+    '',
+    'L icone GoPlex apparaitra sur votre ecran d accueil.',
+    '',
+    '--- SUR ORDINATEUR ---',
+    '',
+    'Ouvrez simplement ' + appUrl + ' dans votre navigateur.',
+    '',
+    'Pour toute question, contactez votre administrateur.',
+    '',
+    '- L equipe GoPlex'
+  ];
+  const body = encodeURIComponent(bodyLines.join('\n'));
+  const mailtoLink = 'mailto:' + email + '?subject=' + subject + '&body=' + body;
 
   openModal('Compte créé — Envoyer les instructions', `
     <div style="background:var(--green-dim);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:14px;margin-bottom:16px">
