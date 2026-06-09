@@ -1990,6 +1990,8 @@ function openEditProduct(id) {
       <div class="form-group"><label class="form-label">Unité de mesure</label>
         <select id="ep-uom" class="form-input">
           <option value="">— Aucune —</option>
+          <option value="">Box</option>
+          <option value="">Unit</option>
           ${uoms.map(u=>`<option value="${u.id}" ${p.uom_id===u.id?'selected':''}>${escHtml(u.name)}</option>`).join('')}
         </select>
       </div>
