@@ -1740,6 +1740,8 @@ function vCreate(c) {
       <div class="form-group"><label class="form-label">Unité de mesure</label>
         <select id="cr-uom" class="form-input">
           <option value="">-- Choisir --</option>
+          <option value="">Box</option>
+          <option value="">Unit</option>
           ${uoms.map(u=>`<option value="${u.id}">${escHtml(u.name)}</option>`).join('')}
         </select>
       </div>
