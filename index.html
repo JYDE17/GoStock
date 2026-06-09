@@ -280,6 +280,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 .role-admin{background:var(--accent-bg);color:var(--accent)}
 .role-manager{background:var(--green-dim);color:var(--green)}
 .role-viewer{background:var(--bg3);color:var(--text2)}
+.role-operation{background:#1e1b4b;color:var(--purple)}
 /* MIGRATE */
 .migrate-step{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg1);border:1px solid var(--border);border-radius:10px;transition:all .3s}
 .migrate-icon{width:28px;height:28px;border-radius:50%;border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
@@ -360,6 +361,10 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
   <div class="nav-group" id="admin-nav" style="display:none">
     <div class="nav-label" onclick="toggleNavGroup(this)">Administration<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
+      <div class="nav-item" id="nav-pending-inv" style="display:none" onclick="nav('pendinginv',this)">
+        <i class="ti ti-clipboard-check"></i>Inventaires
+        <span class="nav-badge hidden" id="pending-inv-badge">0</span>
+      </div>
       <div class="nav-item" onclick="nav('users',this)"><i class="ti ti-users"></i>Utilisateurs</div>
       <div class="nav-item" onclick="nav('settings',this)"><i class="ti ti-settings"></i>Paramètres</div>
       <div class="nav-item" onclick="nav('auditlog',this)"><i class="ti ti-list-check"></i>Journal d'audit</div>
@@ -624,9 +629,23 @@ async function onSignedIn(u) {
   const {data:p} = await sb.from('profiles').select('*').eq('id',u.id).single();
   profile = p || {email:u.email, full_name:u.email, role:'viewer'};
   const isAdmin = profile.role==='admin', isMgr = profile.role==='manager';
-  document.getElementById('admin-nav').style.display = isAdmin ? '' : 'none';
+  const isOperation = profile.role==='operation';
+  const canWrite = isAdmin || isMgr || isOperation;
+
+  // Sidebar — Admin section
+  document.getElementById('admin-nav').style.display = (isAdmin||isMgr) ? '' : 'none';
   document.getElementById('dd-admin').style.display  = isAdmin ? '' : 'none';
   document.getElementById('dd-migrate').style.display= isAdmin ? '' : 'none';
+
+  // Pending inventories nav (manager + admin)
+  const navPending = document.getElementById('nav-pending-inv');
+  if(navPending) navPending.style.display = (isAdmin||isMgr) ? '' : 'none';
+
+  // More sheet — settings/users only for admin
+  const moreSettings = document.getElementById('more-settings');
+  const moreUsers    = document.getElementById('more-users');
+  if(moreSettings) moreSettings.style.display = isAdmin ? '' : 'none';
+  if(moreUsers)    moreUsers.style.display    = isAdmin ? '' : 'none';
   const init = (profile.full_name||u.email||'?').slice(0,2).toUpperCase();
   document.getElementById('u-avatar').textContent = init;
   document.getElementById('u-name').textContent   = (profile.full_name||u.email||'').split(' ')[0];
@@ -697,10 +716,19 @@ async function loadAll() {
     });
 
     updateAlerts();
-    // Don't re-render if we're in a mobile scanner operation (would destroy DOM)
+    // Don't re-render if we're in a mobile scanner operation
     const mScanViews = ['receive','transfer','reduce','inventory'];
     if(!(window.innerWidth <= 768 && mScanViews.includes(currentView) && window._msCtx?.selectedProduct !== undefined)) {
       renderView(currentView);
+    }
+    // Load pending inventories for manager/admin
+    if(profile?.role==='admin'||profile?.role==='manager') {
+      const prevCount = pendingInventories.length;
+      await loadPendingInventories();
+      // Notify if new ones arrived
+      if(pendingInventories.length > prevCount) {
+        toast(`📋 ${pendingInventories.length} inventaire${pendingInventories.length>1?'s':''} en attente de validation`, 'info');
+      }
     }
   } catch(e) { toast('Erreur chargement: '+e.message,'error'); }
   document.getElementById('refresh-icon').classList.remove('spin');
@@ -733,6 +761,7 @@ function nav(view, el) {
     locations:'Emplacements',movements:'Mouvements',receive:'Réceptionner',
     transfer:'Transfert',reduce:'Réduire stock',inventory:'Faire inventaire',
     create:'Créer article',users:'Utilisateurs',
+    pendinginv:'Inventaires à valider',
     settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
@@ -762,7 +791,7 @@ function renderView(v) {
   const map={dashboard:vDashboard,alerts:vAlerts,products:vProducts,
     locations:vLocations,movements:vMovements,receive:vReceive,
     transfer:vTransfer,reduce:vReduce,inventory:vInventory,
-    create:vCreate,users:vUsers,settings:vSettings,auditlog:vAuditLog};
+    create:vCreate,users:vUsers,pendinginv:vPendingInventories,settings:vSettings,auditlog:vAuditLog};
   (map[v]||vDashboard)(c);
 }
 function onSearch() {
@@ -2027,21 +2056,32 @@ async function vUsers(c) {
   const {data:prof}=await sb.from('profiles').select('*').order('created_at');
   c.innerHTML=`
   <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
-    <button class="btn btn-primary" onclick="openInvite()"><i class="ti ti-user-plus"></i> Inviter un utilisateur</button>
+    <button class="btn btn-primary" onclick="openInvite()"><i class="ti ti-user-plus"></i> Créer un utilisateur</button>
   </div>
   <div class="table-card">
     <div class="table-toolbar"><div class="table-toolbar-title"><i class="ti ti-users" style="color:var(--blue);margin-right:6px"></i>Utilisateurs (${(prof||[]).length})</div></div>
-    <table><thead><tr><th>Nom</th><th>Courriel</th><th>Rôle</th><th>Membre depuis</th><th>Changer rôle</th></tr></thead>
+    <table><thead><tr><th>Nom</th><th>Courriel</th><th>Rôle</th><th>Membre depuis</th><th>Changer rôle</th><th>Actions</th></tr></thead>
     <tbody>${(prof||[]).map(p=>`<tr>
       <td style="font-weight:500">${escHtml(p.full_name||'—')}</td>
-      <td style="color:var(--text2)">${escHtml(p.email||'—')}</td>
+      <td style="color:var(--text2);font-size:12px">${escHtml(p.email||'—')}</td>
       <td><span class="role-badge role-${p.role}">${p.role}</span></td>
       <td style="font-size:11px;color:var(--text3)">${p.created_at?new Date(p.created_at).toLocaleDateString('fr-CA'):'—'}</td>
       <td><select onchange="changeRole('${p.id}',this.value)" class="form-input" style="padding:4px 8px;height:auto;font-size:12px;width:auto">
-        <option value="viewer"  ${p.role==='viewer' ?'selected':''}>Viewer</option>
-        <option value="manager" ${p.role==='manager'?'selected':''}>Manager</option>
-        <option value="admin"   ${p.role==='admin'  ?'selected':''}>Admin</option>
+        <option value="viewer"    ${p.role==='viewer'    ?'selected':''}>Viewer</option>
+        <option value="operation" ${p.role==='operation' ?'selected':''}>Opération</option>
+        <option value="manager"   ${p.role==='manager'   ?'selected':''}>Manager</option>
+        <option value="admin"     ${p.role==='admin'     ?'selected':''}>Admin</option>
       </select></td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-amber" style="height:28px;padding:0 10px;font-size:11px" onclick="openResetPassword('${p.id}','${escHtml(p.email||'')}','${escHtml(p.full_name||'')}')">
+            <i class="ti ti-key"></i> MDP
+          </button>
+          ${p.id !== user.id ? `<button class="btn btn-danger" style="height:28px;padding:0 10px;font-size:11px" onclick="confirmDeleteUser('${p.id}','${escHtml(p.full_name||p.email||'')}')">
+            <i class="ti ti-trash"></i>
+          </button>` : `<span style="font-size:11px;color:var(--text3);padding:0 6px">Vous</span>`}
+        </div>
+      </td>
     </tr>`).join('')}
     </tbody></table>
   </div>
@@ -2049,12 +2089,111 @@ async function vUsers(c) {
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">Rôles</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;font-size:12px">
       <div style="padding:12px;background:var(--bg2);border-radius:8px"><span class="role-badge role-viewer" style="display:inline-block;margin-bottom:6px">Viewer</span><br style="margin-bottom:4px">Lecture seule</div>
-      <div style="padding:12px;background:var(--bg2);border-radius:8px"><span class="role-badge role-manager" style="display:inline-block;margin-bottom:6px">Manager</span><br>Réception, transfert, inventaire</div>
+      <div style="padding:12px;background:var(--bg2);border-radius:8px"><span class="role-badge role-operation" style="display:inline-block;margin-bottom:6px">Opération</span><br>Inventaire (soumis pour validation)</div>
+      <div style="padding:12px;background:var(--bg2);border-radius:8px"><span class="role-badge role-manager" style="display:inline-block;margin-bottom:6px">Manager</span><br>Réception, transfert, validation inventaires</div>
       <div style="padding:12px;background:var(--bg2);border-radius:8px"><span class="role-badge role-admin" style="display:inline-block;margin-bottom:6px">Admin</span><br>Tout + gestion utilisateurs</div>
     </div>
   </div>`;
 }
+
 async function changeRole(uid,role){const {error}=await sb.from('profiles').update({role}).eq('id',uid);if(error)toast('Erreur: '+error.message,'error');else toast('Rôle mis à jour → '+role,'success');}
+
+function openResetPassword(uid, email, name) {
+  const newPw = genPw();
+  openModal(`Réinitialiser le mot de passe`, `
+    <div style="background:var(--amber-dim);border:1px solid rgba(234,179,8,.25);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <i class="ti ti-key" style="color:var(--amber);font-size:16px"></i>
+        <span style="font-size:13px;font-weight:600">Nouveau mot de passe pour <strong>${escHtml(name||email)}</strong></span>
+      </div>
+      <div style="font-size:12px;color:var(--text3)">${escHtml(email)}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Nouveau mot de passe</label>
+      <div style="display:flex;gap:8px">
+        <input id="reset-pw" type="text" class="form-input" value="${newPw}" style="font-family:var(--font-mono)">
+        <button class="btn" onclick="document.getElementById('reset-pw').value=genPw()" title="Générer un nouveau"><i class="ti ti-refresh"></i></button>
+      </div>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;color:var(--text3)">
+      <i class="ti ti-info-circle" style="margin-right:6px"></i>
+      Communique ce mot de passe à l'utilisateur. Il pourra le changer après connexion.
+    </div>
+  `, [
+    {label:'Fermer', cls:'', action:'closeModal()'},
+    {label:'<i class="ti ti-check"></i> Réinitialiser', cls:'btn-amber', action:`submitResetPassword('${uid}')`},
+  ]);
+}
+
+async function submitResetPassword(uid) {
+  const pw = document.getElementById('reset-pw')?.value?.trim();
+  if(!pw||pw.length<8){toast('Mot de passe trop court (min 8 car.)','error');return;}
+  try {
+    // Use Supabase Admin API via service role — fallback to direct update if available
+    const {data, error} = await sb.auth.admin?.updateUserById
+      ? await sb.auth.admin.updateUserById(uid, {password: pw})
+      : {data:null, error:{message:'API admin non disponible — utilise le dashboard Supabase'}};
+    if(error) throw error;
+    toast(`✓ Mot de passe réinitialisé`, 'success');
+    closeModal();
+  } catch(e) {
+    // Fallback: show instructions
+    openModal('Réinitialisation manuelle', `
+      <div style="background:var(--blue-bg);border:1px solid var(--blue);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:8px"><i class="ti ti-info-circle" style="margin-right:6px"></i>Réinitialisation via Supabase</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6">
+          La clé publique ne permet pas de modifier les mots de passe d'autres utilisateurs.<br><br>
+          Pour réinitialiser, va dans :<br>
+          <strong style="color:var(--text1)">Supabase Dashboard → Authentication → Users → ${escHtml(uid)}</strong><br><br>
+          Ou envoie un lien de réinitialisation par courriel :
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="sendResetEmail('${uid}')">
+        <i class="ti ti-mail"></i> Envoyer un lien de réinitialisation par courriel
+      </button>
+    `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
+  }
+}
+
+async function sendResetEmail(uid) {
+  // Get user email from profiles
+  const {data:p} = await sb.from('profiles').select('email').eq('id',uid).single();
+  if(!p?.email){toast('Courriel introuvable','error');return;}
+  const {error} = await sb.auth.resetPasswordForEmail(p.email, {
+    redirectTo: window.location.origin
+  });
+  if(error){toast('Erreur: '+error.message,'error');return;}
+  toast(`✓ Lien de réinitialisation envoyé à ${p.email}`,'success');
+  closeModal();
+}
+
+function confirmDeleteUser(uid, name) {
+  openModal('Supprimer cet utilisateur ?', `
+    <div style="background:var(--red-dim);border:1px solid rgba(242,86,104,.3);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <i class="ti ti-alert-triangle" style="color:var(--red);font-size:20px"></i>
+        <span style="font-size:14px;font-weight:600;color:var(--red)">Action irréversible</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2)">
+        Supprimer le compte de <strong style="color:var(--text1)">${escHtml(name)}</strong> ?<br>
+        <span style="font-size:12px;margin-top:4px;display:block">L'utilisateur ne pourra plus se connecter.</span>
+      </div>
+    </div>
+  `, [
+    {label:'Annuler', cls:'', action:'closeModal()'},
+    {label:'<i class="ti ti-trash"></i> Supprimer', cls:'btn-danger', action:`submitDeleteUser('${uid}')`},
+  ]);
+}
+
+async function submitDeleteUser(uid) {
+  try {
+    // Delete profile first (RLS allows admin)
+    await sb.from('profiles').delete().eq('id', uid);
+    toast('✓ Profil supprimé. Le compte auth sera nettoyé automatiquement.','success');
+    closeModal();
+    await vUsers(document.getElementById('main-content'));
+  } catch(e){toast('Erreur: '+e.message,'error');}
+}
 function openInvite() {
   openModal('Créer un nouvel utilisateur', `
     <div class="form-group"><label class="form-label">Nom complet *</label><input id="inv-name" type="text" class="form-input" placeholder="Jean Tremblay"></div>
@@ -2069,7 +2208,8 @@ function openInvite() {
     <div class="form-group"><label class="form-label">Rôle</label>
       <select id="inv-role" class="form-input">
         <option value="viewer">Viewer — lecture seule</option>
-        <option value="manager">Manager — opérations stock</option>
+        <option value="operation">Opération — inventaire uniquement</option>
+        <option value="manager">Manager — opérations stock + validation</option>
         <option value="admin">Admin — accès complet</option>
       </select>
     </div>
@@ -2630,7 +2770,9 @@ function mStartInventoryAtLoc(locId, locName) {
         <div style="font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><i class="ti ti-map-pin" style="color:var(--purple);margin-right:6px"></i>${escHtml(locName)}</div>
         <div style="font-size:11px;color:var(--text3)">${locProds.length} référence${locProds.length!==1?'s':''} · ${Math.round(totalQty)} unités en base</div>
       </div>
-      <button onclick="msScanInvSubmit()" style="height:34px;padding:0 12px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-head);flex-shrink:0"><i class="ti ti-check"></i> Valider</button>
+      <button onclick="msScanInvSubmit()" style="height:34px;padding:0 12px;background:var(--purple);border:none;border-radius:8px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-head);flex-shrink:0">
+        <i class="ti ti-check"></i> ${profile?.role==='operation'?'Soumettre':'Valider'}
+      </button>
     </div>
 
     <!-- Zone scan -->
@@ -2737,34 +2879,33 @@ async function msInvAdd(){
 
 async function msScanInvSubmit(){
   const invMap=window._msCtx?.invMap||{};
+  const locId=window._msCtx?.locId;
+  const locName=window._msCtx?.locName||'—';
   const keys=Object.keys(invMap);
   if(!keys.length){toast('Aucun produit compté','error');return;}
+
+  // Rôle operation → soumettre pour validation manager/admin
+  if(profile?.role==='operation'){
+    const ok = await submitPendingInventory(invMap, locId, locName);
+    if(ok){
+      toast(`✓ Inventaire soumis — en attente de validation`,'success');
+      mScanInventory(document.getElementById('main-content'));
+    }
+    return;
+  }
+
+  // Manager / admin → appliquer directement
   let updates=0, skipped=0;
   for(const pid of keys){
-    const {counted, locId}=invMap[pid];
+    const {counted}=invMap[pid];
     const id=parseInt(pid);
     if(!locId) continue;
-
-    // Qty actuelle dans CET emplacement
     const currentLocQty=stockMap[id]?.byLocation.find(b=>b.locId===locId)?.qty||0;
     const diff=counted-currentLocQty;
-
     if(diff===0){skipped++;continue;}
-
     const newQty=Math.max(0,counted);
-    await sb.from('stock').upsert(
-      {product_id:id,location_id:locId,quantity:newQty},
-      {onConflict:'product_id,location_id'}
-    );
-    await sb.from('movements').insert({
-      product_id:id,
-      location_from:diff<0?locId:null,
-      location_to:  diff>0?locId:null,
-      quantity:Math.abs(diff),
-      movement_type:'inventory',
-      user_id:user.id,
-      user_email:profile?.email
-    });
+    await sb.from('stock').upsert({product_id:id,location_id:locId,quantity:newQty},{onConflict:'product_id,location_id'});
+    await sb.from('movements').insert({product_id:id,location_from:diff<0?locId:null,location_to:diff>0?locId:null,quantity:Math.abs(diff),movement_type:'inventory',user_id:user.id,user_email:profile?.email});
     updates++;
   }
   await logAction('inventory',{notes:`${updates} ajustements, ${skipped} inchangés`});
@@ -2777,11 +2918,12 @@ async function msScanInvSubmit(){
 function openMoreSheet() {
   document.getElementById('more-overlay').classList.add('show');
   setTimeout(()=>document.getElementById('more-sheet').classList.add('show'), 10);
-  const isAdmin = profile?.role === 'admin';
-  document.getElementById('more-admin-title').style.display = isAdmin ? '' : 'none';
-  document.getElementById('more-settings').style.display = isAdmin ? '' : 'none';
-  document.getElementById('more-users').style.display = isAdmin ? '' : 'none';
-  const alertCnt = products.filter(p=>getQty(p.id)<=(p.alert_threshold ?? window._alertThreshold ?? 4)).length;
+  const isAdmin     = profile?.role === 'admin';
+  const canAdmin    = isAdmin || profile?.role === 'manager';
+  document.getElementById('more-admin-title').style.display = canAdmin ? '' : 'none';
+  document.getElementById('more-settings').style.display    = isAdmin ? '' : 'none';
+  document.getElementById('more-users').style.display       = isAdmin ? '' : 'none';
+  const alertCnt = products.filter(p=>p.alert_enabled!==false&&getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4)).length;
   document.getElementById('more-alerts-sub').textContent = alertCnt > 0 ? `${alertCnt} article(s) en alerte` : 'Aucune alerte';
   document.getElementById('more-user-email').textContent = profile?.email || '—';
 }
@@ -2817,8 +2959,191 @@ function closeMoreSheet() {
 
 
 // ══════════════════════════════════════════════════════════
-// SCANNER PHYSIQUE — recherche universelle
+// INVENTAIRES EN ATTENTE
 // ══════════════════════════════════════════════════════════
+let pendingInventories = [];
+
+async function loadPendingInventories() {
+  const {data} = await sb.from('pending_inventories')
+    .select('*').eq('status','pending').order('created_at',{ascending:false});
+  pendingInventories = data || [];
+  updatePendingBadge();
+}
+
+function updatePendingBadge() {
+  const cnt = pendingInventories.length;
+  const badge = document.getElementById('pending-inv-badge');
+  if(badge){ badge.textContent=cnt; badge.classList.toggle('hidden', cnt===0); }
+}
+
+// Soumission inventaire en attente (rôle operation)
+async function submitPendingInventory(invMap, locId, locName) {
+  const items = Object.entries(invMap).map(([pid,data]) => {
+    const p = products.find(x=>x.id===parseInt(pid));
+    return {
+      product_id:   parseInt(pid),
+      product_name: p?.name||'—',
+      counted:      data.counted,
+      current:      Math.round(getQty(parseInt(pid))),
+      loc_qty:      data.counted, // qty in that location
+      diff:         data.counted - Math.round(getQty(parseInt(pid))),
+    };
+  });
+
+  const {error} = await sb.from('pending_inventories').insert({
+    created_by:    user.id,
+    created_email: profile?.email,
+    created_name:  profile?.full_name || profile?.email,
+    location_id:   locId,
+    location_name: locName,
+    items:         JSON.stringify(items),
+    status:        'pending',
+  });
+
+  if(error){ toast('Erreur soumission: '+error.message,'error'); return false; }
+  await loadPendingInventories();
+  return true;
+}
+
+// Vue de validation des inventaires en attente
+async function vPendingInventories(c) {
+  c = c || document.getElementById('main-content');
+  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
+  await loadPendingInventories();
+  const all = pendingInventories;
+
+  if(!all.length) {
+    c.innerHTML = `<div class="empty">
+      <i class="ti ti-clipboard-check" style="display:block;font-size:48px;opacity:.3;margin-bottom:12px;color:var(--green)"></i>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Aucun inventaire en attente</div>
+      <div style="font-size:13px;color:var(--text3)">Les inventaires soumis par l'équipe Opération apparaîtront ici</div>
+    </div>`;
+    return;
+  }
+
+  c.innerHTML = `
+  <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:14px;font-weight:600">${all.length} inventaire${all.length>1?'s':''} en attente de validation</div>
+  </div>
+  ${all.map(inv => {
+    const items = typeof inv.items==='string' ? JSON.parse(inv.items) : (inv.items||[]);
+    const hasChanges = items.filter(i=>i.diff!==0);
+    return `<div class="table-card" style="margin-bottom:16px">
+      <div class="table-toolbar">
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px">
+            <i class="ti ti-clipboard-list" style="color:var(--purple)"></i>
+            Emplacement : <strong>${escHtml(inv.location_name||'—')}</strong>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">
+            Soumis par <strong style="color:var(--text2)">${escHtml(inv.created_name||inv.created_email||'—')}</strong>
+            · ${fmtDate(inv.created_at)}
+            · ${items.length} produit${items.length>1?'s':''}
+            · ${hasChanges.length} modification${hasChanges.length>1?'s':''}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-danger" onclick="rejectInventory('${inv.id}')"><i class="ti ti-x"></i> Rejeter</button>
+          <button class="btn btn-success" onclick="approveInventory('${inv.id}')"><i class="ti ti-check"></i> Approuver & Appliquer</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Produit</th><th style="text-align:center">Stock actuel</th><th style="text-align:center">Compté</th><th style="text-align:center">Différence</th></tr></thead>
+        <tbody>
+          ${items.map(item => {
+            const diff = item.diff || 0;
+            const rowBg = diff<0?'rgba(242,86,104,.06)':diff>0?'rgba(52,211,104,.06)':'';
+            return `<tr style="background:${rowBg}">
+              <td style="font-weight:500">${escHtml(item.product_name||'—')}</td>
+              <td style="text-align:center;font-family:var(--font-mono)">${item.current}</td>
+              <td style="text-align:center;font-family:var(--font-mono);font-weight:600">${item.counted}</td>
+              <td style="text-align:center;font-family:var(--font-mono);font-weight:700;color:var(--${diff>0?'green':diff<0?'red':'text3'})">
+                ${diff===0?'—':(diff>0?'+':'')+diff}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }).join('')}`;
+}
+
+async function approveInventory(invId) {
+  const inv = pendingInventories.find(x=>x.id===invId); if(!inv) return;
+  const items = typeof inv.items==='string' ? JSON.parse(inv.items) : (inv.items||[]);
+  const locId = inv.location_id;
+  if(!locId){ toast('Emplacement manquant','error'); return; }
+
+  let updates=0, skipped=0;
+  for(const item of items){
+    const diff = item.counted - item.current;
+    if(diff===0){ skipped++; continue; }
+    const newQty = Math.max(0, item.counted);
+    await sb.from('stock').upsert(
+      {product_id:item.product_id, location_id:locId, quantity:newQty},
+      {onConflict:'product_id,location_id'}
+    );
+    await sb.from('movements').insert({
+      product_id:    item.product_id,
+      location_from: diff<0 ? locId : null,
+      location_to:   diff>0 ? locId : null,
+      quantity:      Math.abs(diff),
+      movement_type: 'inventory',
+      user_id:       user.id,
+      user_email:    profile?.email,
+      notes:         `Approuvé par ${profile?.full_name||profile?.email}`,
+    });
+    updates++;
+  }
+
+  await sb.from('pending_inventories').update({
+    status:        'approved',
+    reviewed_by:   user.id,
+    reviewed_email:profile?.email,
+    reviewed_at:   new Date().toISOString(),
+  }).eq('id', invId);
+
+  await logAction('inventory',{notes:`${updates} ajustements approuvés (emplacement: ${inv.location_name})`});
+  toast(`✓ Inventaire approuvé — ${updates} ajustement${updates>1?'s':''}`, 'success');
+  await loadAll();
+  await loadPendingInventories();
+  vPendingInventories(document.getElementById('main-content'));
+}
+
+async function rejectInventory(invId) {
+  const inv = pendingInventories.find(x=>x.id===invId); if(!inv) return;
+  openModal('Rejeter cet inventaire ?', `
+    <div style="background:var(--red-dim);border:1px solid rgba(242,86,104,.3);border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="font-size:13px;color:var(--text2)">
+        L'inventaire soumis par <strong style="color:var(--text1)">${escHtml(inv.created_name||inv.created_email)}</strong>
+        pour <strong style="color:var(--text1)">${escHtml(inv.location_name)}</strong> sera supprimé sans être appliqué.
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Raison (optionnel)</label>
+      <input id="reject-reason" type="text" class="form-input" placeholder="ex: erreurs de comptage, à refaire…">
+    </div>
+  `, [
+    {label:'Annuler', cls:'', action:'closeModal()'},
+    {label:'<i class="ti ti-x"></i> Rejeter', cls:'btn-danger', action:`submitRejectInventory('${invId}')`},
+  ]);
+}
+
+async function submitRejectInventory(invId) {
+  const reason = document.getElementById('reject-reason')?.value?.trim();
+  await sb.from('pending_inventories').update({
+    status:        'rejected',
+    reviewed_by:   user.id,
+    reviewed_email:profile?.email,
+    reviewed_at:   new Date().toISOString(),
+    notes:         reason||null,
+  }).eq('id', invId);
+  toast('Inventaire rejeté','info');
+  closeModal();
+  await loadPendingInventories();
+  vPendingInventories(document.getElementById('main-content'));
+}
+
+
 const SCAN_SELECT_MAP={recv:'recv-product',tf:'tf-product',red:'red-product'};
 const SCAN_UPDATE_MAP={recv:()=>updateRecvInfo(),tf:()=>updateTfInfo(),red:()=>updateRedInfo()};
 
