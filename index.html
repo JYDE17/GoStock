@@ -2523,19 +2523,21 @@ async function vSettings(c) {
         <button class="btn btn-primary" onclick="openAddSupplier()"><i class="ti ti-plus"></i> Ajouter</button>
       </div>
       <table>
-        <thead><tr><th>Nom</th><th>Produits</th><th>Action</th></tr></thead>
+        <thead><tr><th>Nom</th><th>Représentant</th><th>Téléphone</th><th>Produits</th><th>Action</th></tr></thead>
         <tbody id="supplier-rows">
           ${(dbSups||[]).length ? (dbSups||[]).map(s => {
             const count = products.filter(p => p.supplier === s.name).length;
             return `<tr>
               <td style="font-weight:500">${escHtml(s.name)}</td>
+              <td style="color:var(--text2)">${escHtml(s.representative||'—')}</td>
+              <td style="color:var(--text2);font-family:var(--font-mono);font-size:12px">${escHtml(s.phone||'—')}</td>
               <td><span class="badge badge-${count>0?'green':'gray'}">${count} produit${count!==1?'s':''}</span></td>
               <td>
-                <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="editSupplier(${s.id},'${escHtml(s.name)}')"><i class="ti ti-pencil"></i></button>
+                <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="editSupplier(${s.id})"><i class="ti ti-pencil"></i></button>
                 <button class="btn btn-danger" style="height:28px;padding:0 10px;font-size:12px;margin-left:4px" onclick="deleteSupplier(${s.id},${count},'${escHtml(s.name)}')"${count>0?' disabled title="Utilisé par des produits"':''}><i class="ti ti-trash"></i></button>
               </td>
             </tr>`;
-          }).join('') : '<tr><td colspan="3" class="empty" style="padding:24px">Aucun fournisseur — ajoutez-en un</td></tr>'}
+          }).join('') : '<tr><td colspan="5" class="empty" style="padding:24px">Aucun fournisseur — ajoutez-en un</td></tr>'}
         </tbody>
       </table>
       <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
@@ -2666,43 +2668,77 @@ async function deleteCat(id, count) {
 }
 
 // ── SUPPLIER CRUD ─────────────────────────────────────────
-function openAddSupplier() {
-  openModal('Ajouter un fournisseur', `
+function _supplierFields(s){
+  s = s || {};
+  return `
     <div class="form-group"><label class="form-label">Nom *</label>
-      <input id="supplier-name" type="text" class="form-input" placeholder="ex: Sysco, Costco, GFS, Métro…">
+      <input id="supplier-name" type="text" class="form-input" placeholder="ex: Sysco, Costco, GFS, Métro…" value="${escHtml(s.name||'')}">
     </div>
-  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Ajouter', cls:'btn-primary', action:'submitAddSupplier()'}]);
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Représentant</label>
+        <input id="supplier-rep" type="text" class="form-input" placeholder="Nom du contact" value="${escHtml(s.representative||'')}">
+      </div>
+      <div class="form-group"><label class="form-label">Téléphone</label>
+        <input id="supplier-phone" type="text" class="form-input" placeholder="450-555-1234" value="${escHtml(s.phone||'')}">
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Courriel</label>
+      <input id="supplier-email" type="email" class="form-input" placeholder="commandes@fournisseur.com" value="${escHtml(s.email||'')}">
+    </div>
+    <div class="form-group"><label class="form-label">Adresse</label>
+      <textarea id="supplier-address" class="form-input" rows="2" placeholder="Adresse complète">${escHtml(s.address||'')}</textarea>
+    </div>
+    <div class="form-group"><label class="form-label">Notes</label>
+      <textarea id="supplier-notes" class="form-input" rows="2" placeholder="Conditions, délai de livraison, n° de compte…">${escHtml(s.notes||'')}</textarea>
+    </div>`;
+}
+
+function _readSupplierForm(){
+  return {
+    name:           document.getElementById('supplier-name')?.value?.trim() || '',
+    representative: document.getElementById('supplier-rep')?.value?.trim() || null,
+    phone:          document.getElementById('supplier-phone')?.value?.trim() || null,
+    email:          document.getElementById('supplier-email')?.value?.trim() || null,
+    address:        document.getElementById('supplier-address')?.value?.trim() || null,
+    notes:          document.getElementById('supplier-notes')?.value?.trim() || null,
+  };
+}
+
+function openAddSupplier() {
+  openModal('Ajouter un fournisseur', _supplierFields(),
+    [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Ajouter', cls:'btn-primary', action:'submitAddSupplier()'}]);
 }
 
 async function submitAddSupplier() {
-  const name = document.getElementById('supplier-name')?.value?.trim();
-  if(!name){ toast('Nom obligatoire','error'); return; }
-  if(suppliers.some(s=>s.name.toLowerCase()===name.toLowerCase())){ toast('Ce fournisseur existe déjà','error'); return; }
-  const { error } = await sb.from('suppliers').insert({ name });
+  const vals = _readSupplierForm();
+  if(!vals.name){ toast('Nom obligatoire','error'); return; }
+  if(suppliers.some(s=>s.name.toLowerCase()===vals.name.toLowerCase())){ toast('Ce fournisseur existe déjà','error'); return; }
+  const { error } = await sb.from('suppliers').insert(vals);
   if(error){ toast('Erreur: '+error.message,'error'); return; }
-  toast(`✓ Fournisseur "${name}" ajouté`,'success');
+  toast(`✓ Fournisseur "${vals.name}" ajouté`,'success');
   closeModal();
   await loadAll();
   vSettings(document.getElementById('main-content'));
 }
 
-function editSupplier(id, currentName) {
-  openModal('Modifier le fournisseur', `
-    <div class="form-group"><label class="form-label">Nom *</label>
-      <input id="supplier-edit-name" type="text" class="form-input" value="${escHtml(currentName)}">
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:4px">Le nom sera aussi mis à jour sur les produits qui utilisent ce fournisseur.</div>
-  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Sauvegarder', cls:'btn-primary', action:`submitEditSupplier(${id},'${escHtml(currentName)}')`}]);
+function editSupplier(id) {
+  const s = suppliers.find(x=>x.id===id);
+  if(!s){ toast('Fournisseur introuvable','error'); return; }
+  const oldName = (s.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  openModal('Modifier le fournisseur',
+    _supplierFields(s) +
+    `<div style="font-size:11px;color:var(--text3);margin-top:4px">Renommer le fournisseur met aussi à jour le nom sur les produits liés.</div>`,
+    [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Sauvegarder', cls:'btn-primary', action:`submitEditSupplier(${id},'${oldName}')`}]);
 }
 
 async function submitEditSupplier(id, oldName) {
-  const name = document.getElementById('supplier-edit-name')?.value?.trim();
-  if(!name){ toast('Nom obligatoire','error'); return; }
-  const { error } = await sb.from('suppliers').update({ name }).eq('id', id);
+  const vals = _readSupplierForm();
+  if(!vals.name){ toast('Nom obligatoire','error'); return; }
+  const { error } = await sb.from('suppliers').update(vals).eq('id', id);
   if(error){ toast('Erreur: '+error.message,'error'); return; }
   // Mise à jour en cascade du nom sur les produits liés
-  if(oldName && oldName !== name){
-    await sb.from('products').update({ supplier:name }).eq('supplier', oldName);
+  if(oldName && oldName !== vals.name){
+    await sb.from('products').update({ supplier:vals.name }).eq('supplier', oldName);
   }
   toast(`✓ Fournisseur mis à jour`,'success');
   closeModal();
