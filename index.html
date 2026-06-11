@@ -658,7 +658,8 @@ async function onSignedIn(u) {
 
   await loadAll();
   restoreNavState();
-} { document.getElementById('u-dropdown').classList.toggle('show'); }
+}
+function toggleUserMenu(){ document.getElementById('u-dropdown').classList.toggle('show'); }
 function toggleRapports(){
   const dd=document.getElementById('rapports-dropdown');
   if(dd) dd.style.display=dd.style.display==='none'?'':'none';
@@ -1661,7 +1662,6 @@ function filterInvDesktop() {
     if(r) r.style.display = (!q||(p.name||'').toLowerCase().includes(q)||(p.reference||'').toLowerCase().includes(q)) ? '' : 'none';
   });
 }
-function calcDiff(pid){const val=document.getElementById('inv-qty-'+pid)?.value;const d=document.getElementById('inv-diff-'+pid);if(!d)return;if(val===''||val===undefined){d.textContent='—';d.style.color='var(--text3)';return;}const diff=parseFloat(val)-getQty(pid);d.textContent=(diff>=0?'+':'')+Math.round(diff);d.style.color=diff>0?'var(--green)':diff<0?'var(--red)':'var(--text3)';}
 async function submitInventory() {
   let updates=0, skipped=0, errors=0;
   toast('Validation en cours…','info');
@@ -1739,20 +1739,20 @@ function vCreate(c) {
       </div>
       <div class="form-group"><label class="form-label">Unité de mesure</label>
         <select id="cr-uom" class="form-input">
-          <option value="200">-- Choisir --</option>
-          <option value="201">Box</option>
-          <option value="202">Unit</option>
+          <option value="">-- Choisir --</option>
           ${uoms.map(u=>`<option value="${u.id}">${escHtml(u.name)}</option>`).join('')}
         </select>
       </div>
+    </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Fournisseur</label>
-        <select id="cr-uom" class="form-input">
+        <select id="cr-supplier" class="form-input">
           <option value="">-- Choisir --</option>
-          <option value="">Sysco</option>
-          <option value="">Costco</option>
-          ${uoms.map(u=>`<option value="${u.id}">${escHtml(u.name)}</option>`).join('')}
+          <option value="Sysco">Sysco</option>
+          <option value="Costco">Costco</option>
         </select>
+      </div>
+      <div class="form-group"></div>
     </div>
     <div class="form-section">Prix</div>
     <div class="form-row">
@@ -2814,18 +2814,6 @@ function msSelectProduct(id){
   if(navigator.vibrate)navigator.vibrate(40);
 }
 
-function msCheckReady(prefix){
-  const qty=parseFloat(document.getElementById('ms-qty')?.value||0);
-  const btn=document.getElementById('ms-confirm-btn');if(!btn)return;
-  const hasProduct=!!window._msCtx?.selectedProduct;
-  const hasQty=qty>0;
-  let ready=hasProduct&&hasQty;
-  if(prefix==='tf'){const from=document.getElementById('ms-tf-from')?.value;const to=document.getElementById('ms-tf-to')?.value;ready=ready&&!!from&&!!to&&from!==to;}
-  if(prefix==='recv')ready=ready&&!!document.getElementById('ms-recv-loc')?.value;
-  if(prefix==='red')ready=ready&&!!document.getElementById('ms-red-loc')?.value;
-  btn.style.opacity=ready?'1':'0.4';btn.style.pointerEvents=ready?'auto':'none';
-}
-
 async function msSubmit(prefix){
   const p=window._msCtx?.selectedProduct;if(!p)return;
   const qty=parseFloat(document.getElementById('ms-qty')?.value||0);
@@ -3124,7 +3112,8 @@ function openMoreSheet() {
   setTimeout(()=>document.getElementById('more-sheet').classList.add('show'), 10);
   const isAdmin     = profile?.role === 'admin';
   const canAdmin    = isAdmin || profile?.role === 'manager';
-  document.getElementById('more-admin-title').style.display = canAdmin ? '' : 'none';
+  const adminTitle = document.getElementById('more-admin-title');
+  if(adminTitle) adminTitle.style.display = canAdmin ? '' : 'none';
   document.getElementById('more-settings').style.display    = isAdmin ? '' : 'none';
   document.getElementById('more-users').style.display       = isAdmin ? '' : 'none';
   const alertCnt = products.filter(p=>p.alert_enabled!==false&&getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4)).length;
