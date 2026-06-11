@@ -3741,11 +3741,12 @@ function exportCSV() {
   a.download='inventaire_goplex.csv'; a.click();
 }
 
-async function exportCommandeExcel(catId=null) {
+async function exportCommandeExcel(catId=null, supplierName=null) {
   const toOrder = products.filter(p =>
     p.alert_enabled !== false &&
     getQty(p.id) <= (p.alert_threshold ?? window._alertThreshold ?? 4) &&
-    (catId === null || p.category_id == catId)
+    (catId === null || p.category_id == catId) &&
+    (supplierName === null || (p.supplier||'') === supplierName)
   ).sort((a,b) => {
     const qa=getQty(a.id), qb=getQty(b.id);
     if(qa<=0&&qb>0) return -1;
@@ -3766,7 +3767,9 @@ async function exportCommandeExcel(catId=null) {
   }
 
   const today    = new Date().toLocaleDateString('fr-CA');
-  const catName  = catId ? (categories.find(c=>c.id==catId)?.name||'Catégorie') : 'Toutes catégories';
+  const catName  = supplierName ? `Fournisseur : ${supplierName}`
+                  : catId ? (categories.find(c=>c.id==catId)?.name||'Catégorie')
+                  : 'Toutes catégories';
   const threshold = window._alertThreshold ?? 4;
   const wb = XLSX.utils.book_new();
 
@@ -3891,7 +3894,10 @@ async function exportCommandeExcel(catId=null) {
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Résumé');
 
   // ── Download ─────────────────────────────────────────────
-  const filename = `lot_dachat_${catId?catName.replace(/\s+/g,'_'):'complet'}_${today.replace(/\//g,'-')}.xlsx`;
+  const slug = supplierName ? ('fournisseur_'+supplierName.replace(/\s+/g,'_'))
+             : catId ? catName.replace(/\s+/g,'_')
+             : 'complet';
+  const filename = `lot_dachat_${slug}_${today.replace(/\//g,'-')}.xlsx`;
   XLSX.writeFile(wb, filename);
   toast(`✓ ${toOrder.length} produits — ${filename}`,'success');
 }
@@ -4102,27 +4108,64 @@ function openInstructions(name, email, pw) {
   ]);
 }
 
+// ══ LOT D'ACHAT — flux en 2 étapes ════════════════════════
+function _alertProds(){
+  return products.filter(p => p.alert_enabled!==false && getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4));
+}
+
+// Étape 1 : choisir la dimension
 function openExportModal() {
-  // Build category options with counts
-  const alertProds = products.filter(p => p.alert_enabled!==false && getQty(p.id)<=(p.alert_threshold??window._alertThreshold??4));
+  const alertProds = _alertProds();
   if(!alertProds.length){ toast('Aucun produit à commander !','info'); return; }
 
-  // Count per category
-  const catCounts = {};
-  alertProds.forEach(p => {
-    const key = p.category_id || '__none__';
-    catCounts[key] = (catCounts[key]||0)+1;
-  });
+  openModal("Lot d'achat", `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px">
+      ${alertProds.length} produit${alertProds.length>1?'s':''} en alerte — comment veux-tu trier ton lot d'achat ?
+    </div>
+    <div onclick="exportStepCategory()"
+      style="display:flex;align-items:center;justify-content:space-between;padding:16px;
+             background:var(--amber-dim);border:2px solid var(--amber);border-radius:12px;
+             cursor:pointer;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <i class="ti ti-tag" style="color:var(--amber);font-size:22px"></i>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--amber)">Par catégorie</div>
+          <div style="font-size:11px;color:var(--text3)">Toutes les catégories ou une catégorie précise</div>
+        </div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--amber)"></i>
+    </div>
+    <div onclick="exportStepSupplier()"
+      style="display:flex;align-items:center;justify-content:space-between;padding:16px;
+             background:var(--green-dim);border:2px solid var(--green);border-radius:12px;
+             cursor:pointer">
+      <div style="display:flex;align-items:center;gap:12px">
+        <i class="ti ti-truck" style="color:var(--green);font-size:22px"></i>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--green)">Par fournisseur</div>
+          <div style="font-size:11px;color:var(--text3)">Tous les fournisseurs ou un fournisseur précis</div>
+        </div>
+      </div>
+      <i class="ti ti-chevron-right" style="color:var(--green)"></i>
+    </div>
+  `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
+}
 
+// Étape 2A : par catégorie
+function exportStepCategory() {
+  const alertProds = _alertProds();
+  if(!alertProds.length){ toast('Aucun produit à commander !','info'); return; }
+
+  const catCounts = {};
+  alertProds.forEach(p => { const k = p.category_id || '__none__'; catCounts[k]=(catCounts[k]||0)+1; });
   const catOptions = Object.entries(catCounts)
     .sort((a,b)=>b[1]-a[1])
     .map(([cid, cnt]) => {
       const cat = cid==='__none__' ? 'Sans catégorie' : (categories.find(c=>c.id==cid)?.name||'?');
       return `<div onclick="exportCommandeExcel(${cid==='__none__'?'null':cid});closeModal()"
         style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
-               background:var(--bg2);border:1px solid var(--border);border-radius:8px;cursor:pointer;
-               transition:border-color .15s"
-        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+               background:var(--bg2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--amber)'" onmouseout="this.style.borderColor='var(--border)'">
         <div style="display:flex;align-items:center;gap:10px">
           <i class="ti ti-tag" style="color:var(--amber);font-size:16px"></i>
           <span style="font-size:14px;font-weight:500">${escHtml(cat)}</span>
@@ -4131,62 +4174,68 @@ function openExportModal() {
       </div>`;
     }).join('');
 
-  openModal("Lot d'achat", `
-    <div style="margin-bottom:16px">
-      <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
-        ${alertProds.length} produit${alertProds.length>1?'s':''} en alerte au total — choisissez quoi exporter :
-      </div>
-
-      <!-- Exports groupés -->
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Exports triés</div>
-      <div onclick="exportGroupedExcel('supplier');closeModal()"
-        style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
-               background:var(--green-dim);border:2px solid var(--green);border-radius:10px;
-               cursor:pointer;margin-bottom:8px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <i class="ti ti-truck" style="color:var(--green);font-size:20px"></i>
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--green)">Excel trié par fournisseur</div>
-            <div style="font-size:11px;color:var(--text3)">Un groupe par fournisseur, avec sous-totaux</div>
-          </div>
+  openModal("Lot d'achat — par catégorie", `
+    <div onclick="exportCommandeExcel(null);closeModal()"
+      style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+             background:var(--accent-bg);border:2px solid var(--accent);border-radius:10px;cursor:pointer;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="ti ti-file-spreadsheet" style="color:var(--accent);font-size:20px"></i>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--accent)">Toutes les catégories</div>
+          <div style="font-size:11px;color:var(--text3)">Liste complète de tous les produits à commander</div>
         </div>
-        <span class="badge badge-green">${alertProds.length} produits</span>
       </div>
-      <div onclick="exportGroupedExcel('category');closeModal()"
-        style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
-               background:var(--amber-dim);border:2px solid var(--amber);border-radius:10px;
-               cursor:pointer;margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <i class="ti ti-tag" style="color:var(--amber);font-size:20px"></i>
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--amber)">Excel trié par catégorie</div>
-            <div style="font-size:11px;color:var(--text3)">Un groupe par catégorie, avec sous-totaux</div>
-          </div>
-        </div>
-        <span class="badge badge-amber">${alertProds.length} produits</span>
-      </div>
-
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Export simple</div>
-      <!-- Export complet -->
-      <div onclick="exportCommandeExcel(null);closeModal()"
-        style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
-               background:var(--accent-bg);border:2px solid var(--accent);border-radius:10px;
-               cursor:pointer;margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:10px">
-          <i class="ti ti-file-spreadsheet" style="color:var(--accent);font-size:20px"></i>
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--accent)">Toutes les catégories</div>
-            <div style="font-size:11px;color:var(--text3)">Liste unique de tous les produits à commander</div>
-          </div>
-        </div>
-        <span class="badge badge-orange">${alertProds.length} produits</span>
-      </div>
-      <!-- Par catégorie -->
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Une seule catégorie</div>
-      <div style="display:flex;flex-direction:column;gap:6px">${catOptions}</div>
+      <span class="badge badge-orange">${alertProds.length} produits</span>
     </div>
-  `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Une catégorie précise</div>
+    <div style="display:flex;flex-direction:column;gap:6px">${catOptions}</div>
+  `, [{label:'← Retour', cls:'', action:'openExportModal()'},{label:'Fermer', cls:'', action:'closeModal()'}]);
 }
+
+// Étape 2B : par fournisseur
+function exportStepSupplier() {
+  const alertProds = _alertProds();
+  if(!alertProds.length){ toast('Aucun produit à commander !','info'); return; }
+  const jsStr = s => String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+  const supCounts = {};
+  alertProds.forEach(p => { const k = p.supplier || '__none__'; supCounts[k]=(supCounts[k]||0)+1; });
+  const supOptions = Object.entries(supCounts)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([name, cnt]) => {
+      const isNone = name==='__none__';
+      const label  = isNone ? 'Sans fournisseur' : name;
+      const arg    = isNone ? "''" : `'${jsStr(name)}'`;
+      return `<div onclick="exportCommandeExcel(null,${arg});closeModal()"
+        style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;
+               background:var(--bg2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--green)'" onmouseout="this.style.borderColor='var(--border)'">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-truck" style="color:var(--green);font-size:16px"></i>
+          <span style="font-size:14px;font-weight:500">${escHtml(label)}</span>
+        </div>
+        <span class="badge badge-green">${cnt} produit${cnt>1?'s':''}</span>
+      </div>`;
+    }).join('');
+
+  openModal("Lot d'achat — par fournisseur", `
+    <div onclick="exportGroupedExcel('supplier');closeModal()"
+      style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+             background:var(--green-dim);border:2px solid var(--green);border-radius:10px;cursor:pointer;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <i class="ti ti-file-spreadsheet" style="color:var(--green);font-size:20px"></i>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--green)">Tous les fournisseurs</div>
+          <div style="font-size:11px;color:var(--text3)">Un seul fichier groupé par fournisseur, avec sous-totaux</div>
+        </div>
+      </div>
+      <span class="badge badge-green">${alertProds.length} produits</span>
+    </div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Un fournisseur précis</div>
+    <div style="display:flex;flex-direction:column;gap:6px">${supOptions}</div>
+  `, [{label:'← Retour', cls:'', action:'openExportModal()'},{label:'Fermer', cls:'', action:'closeModal()'}]);
+}
+
 
 document.addEventListener('keydown',e=>{
   if(e.key==='F2'||(e.ctrlKey&&e.key==='b')){e.preventDefault();openBarcodeScanner(currentView);}
