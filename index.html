@@ -562,7 +562,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // STATE
 // ══════════════════════════════════════════════════════════
 let user = null, profile = null;
-let products = [], locations = [], categories = [], uoms = [], movements = [];
+let products = [], locations = [], categories = [], uoms = [], suppliers = [], movements = [];
 let stockMap = {};        // productId -> { total, byLocation: [{locId,qty}] }
 let currentView = 'dashboard', filterStatus = 'all', filterCat = 'all', searchQ = '';
 let bcFoundProduct = null, bcStream = null, bcInterval = null;
@@ -694,19 +694,21 @@ async function loadAll() {
   try {
     const [
       {data:prods},  {data:locs}, {data:cats}, {data:u},
-      {data:stocks}, {data:moves}
+      {data:stocks}, {data:moves}, {data:sups}
     ] = await Promise.all([
       sb.from('products').select('*,alert_enabled').eq('active',true).order('name'),
       sb.from('locations').select('*').eq('active',true).order('name'),
       sb.from('categories').select('*').order('name'),
       sb.from('uoms').select('*').order('name'),
       sb.from('stock').select('*'),
-      sb.from('movements').select('*').order('created_at',{ascending:false}).limit(300)
+      sb.from('movements').select('*').order('created_at',{ascending:false}).limit(300),
+      sb.from('suppliers').select('*').order('name')
     ]);
     products  = prods  || [];
     locations = locs   || [];
     categories= cats   || [];
     uoms      = u      || [];
+    suppliers = sups   || [];
     movements = moves  || [];
 
     // Build stockMap: productId -> { total, byLocation }
@@ -1748,8 +1750,7 @@ function vCreate(c) {
       <div class="form-group"><label class="form-label">Fournisseur</label>
         <select id="cr-supplier" class="form-input">
           <option value="">-- Choisir --</option>
-          <option value="Sysco">Sysco</option>
-          <option value="Costco">Costco</option>
+          ${suppliers.map(s=>`<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group"></div>
@@ -1787,6 +1788,7 @@ async function submitCreate() {
     sale_price:parseFloat(document.getElementById('cr-price').value)||0,
     cost_price:parseFloat(document.getElementById('cr-cost').value)||0,
     description:document.getElementById('cr-desc').value.trim()||null,
+    supplier:document.getElementById('cr-supplier').value||null,
     active:true
   };
   try {
@@ -1998,11 +2000,18 @@ function openEditProduct(id) {
       <div class="form-group"><label class="form-label">Unité de mesure</label>
         <select id="ep-uom" class="form-input">
           <option value="">— Aucune —</option>
-          <option value="">Box</option>
-          <option value="">Unit</option>
           ${uoms.map(u=>`<option value="${u.id}" ${p.uom_id===u.id?'selected':''}>${escHtml(u.name)}</option>`).join('')}
         </select>
       </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Fournisseur</label>
+        <select id="ep-supplier" class="form-input">
+          <option value="">— Aucun —</option>
+          ${suppliers.map(s=>`<option value="${escHtml(s.name)}" ${p.supplier===s.name?'selected':''}>${escHtml(s.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"></div>
     </div>
     <div class="form-section">Prix</div>
     <div class="form-row">
@@ -2027,6 +2036,7 @@ async function submitEditProduct(id) {
   const barcode  = document.getElementById('ep-barcode')?.value?.trim() || null;
   const catId    = parseInt(document.getElementById('ep-cat')?.value) || null;
   const uomId    = parseInt(document.getElementById('ep-uom')?.value) || null;
+  const supplier = document.getElementById('ep-supplier')?.value || null;
   const price    = parseFloat(document.getElementById('ep-price')?.value) || 0;
   const cost     = parseFloat(document.getElementById('ep-cost')?.value) || 0;
   const desc     = document.getElementById('ep-desc')?.value?.trim() || null;
@@ -2035,7 +2045,7 @@ async function submitEditProduct(id) {
 
   const { error } = await sb.from('products').update({
     name, reference:ref, barcode, category_id:catId, uom_id:uomId,
-    sale_price:price, cost_price:cost, description:desc,
+    supplier, sale_price:price, cost_price:cost, description:desc,
     updated_at: new Date().toISOString()
   }).eq('id', id);
 
@@ -2450,6 +2460,7 @@ async function vSettings(c) {
 
   const { data: dbUoms  } = await sb.from('uoms').select('*').order('name');
   const { data: dbCats  } = await sb.from('categories').select('*').order('name');
+  const { data: dbSups  } = await sb.from('suppliers').select('*').order('name');
 
   c.innerHTML = `
   <div style="max-width:800px;display:flex;flex-direction:column;gap:20px">
@@ -2503,6 +2514,33 @@ async function vSettings(c) {
           }).join('') : '<tr><td colspan="3" class="empty" style="padding:24px">Aucune catégorie</td></tr>'}
         </tbody>
       </table>
+    </div>
+
+    <!-- ── FOURNISSEURS ── -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title"><i class="ti ti-truck" style="color:var(--green);margin-right:8px"></i>Fournisseurs</div>
+        <button class="btn btn-primary" onclick="openAddSupplier()"><i class="ti ti-plus"></i> Ajouter</button>
+      </div>
+      <table>
+        <thead><tr><th>Nom</th><th>Produits</th><th>Action</th></tr></thead>
+        <tbody id="supplier-rows">
+          ${(dbSups||[]).length ? (dbSups||[]).map(s => {
+            const count = products.filter(p => p.supplier === s.name).length;
+            return `<tr>
+              <td style="font-weight:500">${escHtml(s.name)}</td>
+              <td><span class="badge badge-${count>0?'green':'gray'}">${count} produit${count!==1?'s':''}</span></td>
+              <td>
+                <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="editSupplier(${s.id},'${escHtml(s.name)}')"><i class="ti ti-pencil"></i></button>
+                <button class="btn btn-danger" style="height:28px;padding:0 10px;font-size:12px;margin-left:4px" onclick="deleteSupplier(${s.id},${count},'${escHtml(s.name)}')"${count>0?' disabled title="Utilisé par des produits"':''}><i class="ti ti-trash"></i></button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="3" class="empty" style="padding:24px">Aucun fournisseur — ajoutez-en un</td></tr>'}
+        </tbody>
+      </table>
+      <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
+        Les fournisseurs ajoutés ici apparaissent automatiquement dans le menu déroulant à la création/modification d'un produit.
+      </div>
     </div>
 
     <!-- ── SEUIL D'ALERTE STOCK ── -->
@@ -2623,6 +2661,61 @@ async function deleteCat(id, count) {
   const { error } = await sb.from('categories').delete().eq('id', id);
   if(error){ toast('Erreur: '+error.message,'error'); return; }
   toast('Catégorie supprimée','success');
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+// ── SUPPLIER CRUD ─────────────────────────────────────────
+function openAddSupplier() {
+  openModal('Ajouter un fournisseur', `
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="supplier-name" type="text" class="form-input" placeholder="ex: Sysco, Costco, GFS, Métro…">
+    </div>
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Ajouter', cls:'btn-primary', action:'submitAddSupplier()'}]);
+}
+
+async function submitAddSupplier() {
+  const name = document.getElementById('supplier-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  if(suppliers.some(s=>s.name.toLowerCase()===name.toLowerCase())){ toast('Ce fournisseur existe déjà','error'); return; }
+  const { error } = await sb.from('suppliers').insert({ name });
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast(`✓ Fournisseur "${name}" ajouté`,'success');
+  closeModal();
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+function editSupplier(id, currentName) {
+  openModal('Modifier le fournisseur', `
+    <div class="form-group"><label class="form-label">Nom *</label>
+      <input id="supplier-edit-name" type="text" class="form-input" value="${escHtml(currentName)}">
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px">Le nom sera aussi mis à jour sur les produits qui utilisent ce fournisseur.</div>
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Sauvegarder', cls:'btn-primary', action:`submitEditSupplier(${id},'${escHtml(currentName)}')`}]);
+}
+
+async function submitEditSupplier(id, oldName) {
+  const name = document.getElementById('supplier-edit-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  const { error } = await sb.from('suppliers').update({ name }).eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  // Mise à jour en cascade du nom sur les produits liés
+  if(oldName && oldName !== name){
+    await sb.from('products').update({ supplier:name }).eq('supplier', oldName);
+  }
+  toast(`✓ Fournisseur mis à jour`,'success');
+  closeModal();
+  await loadAll();
+  vSettings(document.getElementById('main-content'));
+}
+
+async function deleteSupplier(id, count, name) {
+  if(count > 0){ toast('Impossible — utilisé par des produits','error'); return; }
+  if(!confirm(`Supprimer le fournisseur "${name}" ?`)) return;
+  const { error } = await sb.from('suppliers').delete().eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast('Fournisseur supprimé','success');
   await loadAll();
   vSettings(document.getElementById('main-content'));
 }
@@ -3803,6 +3896,152 @@ async function exportCommandeExcel(catId=null) {
   toast(`✓ ${toOrder.length} produits — ${filename}`,'success');
 }
 
+// ── Export groupé : par fournisseur OU par catégorie ─────────
+async function exportGroupedExcel(groupBy) {
+  // groupBy: 'supplier' | 'category'
+  const toOrder = products.filter(p =>
+    p.alert_enabled !== false &&
+    getQty(p.id) <= (p.alert_threshold ?? window._alertThreshold ?? 4)
+  );
+  if(!toOrder.length){ toast('Aucun produit à commander !','info'); return; }
+
+  // Load SheetJS dynamically
+  if(!window.XLSX) {
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const today     = new Date().toLocaleDateString('fr-CA');
+  const threshold = window._alertThreshold ?? 4;
+  const isSupplier   = groupBy === 'supplier';
+  const secondaryLbl = isSupplier ? 'Catégorie' : 'Fournisseur';
+  const noneLbl      = isSupplier ? 'Sans fournisseur' : 'Sans catégorie';
+
+  const keyOf = p => isSupplier
+    ? (p.supplier || noneLbl)
+    : (categories.find(c=>c.id===p.category_id)?.name || noneLbl);
+  const secondaryOf = p => isSupplier
+    ? (categories.find(c=>c.id===p.category_id)?.name || '—')
+    : (p.supplier || '—');
+  const sugOf = p => {
+    const qty=Math.round(getQty(p.id));
+    const seuil=p.alert_threshold ?? threshold;
+    return Math.max(1,(seuil*2)-qty);
+  };
+
+  // Regrouper
+  const groups = {};
+  toOrder.forEach(p => { const k=keyOf(p); (groups[k]=groups[k]||[]).push(p); });
+  const groupNames = Object.keys(groups).sort((a,b)=>{
+    if(a===noneLbl) return 1;
+    if(b===noneLbl) return -1;
+    return a.localeCompare(b);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const headers = ['Produit','Référence',secondaryLbl,'Stock actuel','Seuil','Statut','Qté à commander','Notes'];
+  const NCOL = headers.length;
+  const wsData = [headers];
+  const groupHeaderRows = [];
+  const subtotalRows    = [];
+  const dataRowProd     = {};   // rowIdx -> product
+
+  groupNames.forEach(gName => {
+    const list = groups[gName].sort((a,b)=>{
+      const qa=getQty(a.id), qb=getQty(b.id);
+      if(qa<=0&&qb>0) return -1;
+      if(qb<=0&&qa>0) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    groupHeaderRows.push(wsData.length);
+    wsData.push([`${gName}  —  ${list.length} produit${list.length>1?'s':''}`,'','','','','','','']);
+    let grpTotal = 0;
+    list.forEach(p=>{
+      const qty=Math.round(getQty(p.id));
+      const seuil=p.alert_threshold ?? threshold;
+      const s=getStatus(qty,p.id);
+      const sug=sugOf(p); grpTotal+=sug;
+      dataRowProd[wsData.length]=p;
+      wsData.push([p.name, p.reference||'—', secondaryOf(p), qty, seuil, s.label, sug, '']);
+    });
+    subtotalRows.push(wsData.length);
+    wsData.push(['','','','','','Sous-total',grpTotal,'']);
+    wsData.push(['','','','','','','','']); // espaceur
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{wch:32},{wch:16},{wch:20},{wch:14},{wch:10},{wch:14},{wch:18},{wch:28}];
+  ws['!freeze'] = {xSplit:0, ySplit:1};
+  ws['!merges'] = groupHeaderRows.map(r => ({s:{r,c:0}, e:{r,c:NCOL-1}}));
+
+  // En-tête colonnes
+  for(let c=0;c<NCOL;c++){
+    const a=XLSX.utils.encode_cell({r:0,c});
+    if(!ws[a]) continue;
+    ws[a].s={fill:{fgColor:{rgb:'1A1A1E'}},font:{bold:true,color:{rgb:'C9A84C'},sz:11,name:'Calibri'},border:{bottom:{style:'medium',color:{rgb:'C9A84C'}}},alignment:{horizontal:'center',vertical:'center'}};
+  }
+  // En-têtes de groupe (or)
+  groupHeaderRows.forEach(r=>{
+    for(let c=0;c<NCOL;c++){
+      const a=XLSX.utils.encode_cell({r,c});
+      if(!ws[a]) ws[a]={t:'s',v:''};
+      ws[a].s={fill:{fgColor:{rgb:'C9A84C'}},font:{bold:true,sz:12,color:{rgb:'1A1A1E'},name:'Calibri'},alignment:{horizontal:'left',vertical:'center'}};
+    }
+  });
+  // Lignes produits
+  Object.entries(dataRowProd).forEach(([rStr,p])=>{
+    const row=+rStr;
+    const qty=Math.round(getQty(p.id));
+    const isOut=qty<=0;
+    const bg=isOut?'FFEAEA':'FFF8E8';
+    for(let c=0;c<NCOL;c++){
+      const a=XLSX.utils.encode_cell({r:row,c});
+      if(!ws[a]) ws[a]={t:'s',v:''};
+      const isNumCol=c===3||c===4||c===6;
+      let fontColor='333333';
+      if(c===5) fontColor=isOut?'CC0000':'B85C00';
+      if(c===6) fontColor='1A6B3C';
+      ws[a].s={fill:{fgColor:{rgb:bg}},font:{name:'Calibri',sz:10,bold:c===0||c===6,color:{rgb:fontColor}},border:{bottom:{style:'thin',color:{rgb:'DDDDDD'}},right:{style:'thin',color:{rgb:'EEEEEE'}}},alignment:{horizontal:isNumCol?'center':'left',vertical:'center'}};
+    }
+  });
+  // Lignes sous-total
+  subtotalRows.forEach(r=>{
+    for(let c=0;c<NCOL;c++){
+      const a=XLSX.utils.encode_cell({r,c});
+      if(!ws[a]) ws[a]={t:'s',v:''};
+      ws[a].s={fill:{fgColor:{rgb:'EFEAD8'}},font:{name:'Calibri',sz:10,bold:true,color:{rgb:c===6?'1A6B3C':'555555'}},alignment:{horizontal:c===6?'center':'right',vertical:'center'},border:{top:{style:'thin',color:{rgb:'C9A84C'}}}};
+    }
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, isSupplier?'Par fournisseur':'Par catégorie');
+
+  // ── Onglet Résumé ────────────────────────────────────────
+  const summaryData = [
+    [`Lot d'achat — ${isSupplier?'par fournisseur':'par catégorie'}`],
+    [],
+    ['Généré le', today],
+    [],
+    [isSupplier?'Fournisseur':'Catégorie','Produits','Qté à commander'],
+    ...groupNames.map(g=>[g, groups[g].length, groups[g].reduce((s,p)=>s+sugOf(p),0)]),
+    [],
+    ['Total', toOrder.length, toOrder.reduce((s,p)=>s+sugOf(p),0)],
+  ];
+  const wsSum = XLSX.utils.aoa_to_sheet(summaryData);
+  wsSum['!cols']=[{wch:28},{wch:14},{wch:18}];
+  if(wsSum['A1']) wsSum['A1'].s={font:{bold:true,sz:14,color:{rgb:'C9A84C'},name:'Calibri'},fill:{fgColor:{rgb:'1A1A1E'}}};
+  // En-tête tableau résumé
+  ['A5','B5','C5'].forEach(a=>{ if(wsSum[a]) wsSum[a].s={font:{bold:true,color:{rgb:'C9A84C'},name:'Calibri'},fill:{fgColor:{rgb:'1A1A1E'}},alignment:{horizontal:'center'}}; });
+  XLSX.utils.book_append_sheet(wb, wsSum, 'Résumé');
+
+  const filename = `lot_dachat_par_${isSupplier?'fournisseur':'categorie'}_${today.replace(/\//g,'-')}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  toast(`✓ ${toOrder.length} produits groupés par ${isSupplier?'fournisseur':'catégorie'} — ${filename}`,'success');
+}
+
 function openInstructions(name, email, pw) {
   const appUrl  = 'https://goplex.vercel.app';
   const subject = encodeURIComponent('GoPlex Inventaire - Acces a l application');
@@ -3897,6 +4136,37 @@ function openExportModal() {
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px">
         ${alertProds.length} produit${alertProds.length>1?'s':''} en alerte au total — choisissez quoi exporter :
       </div>
+
+      <!-- Exports groupés -->
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Exports triés</div>
+      <div onclick="exportGroupedExcel('supplier');closeModal()"
+        style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+               background:var(--green-dim);border:2px solid var(--green);border-radius:10px;
+               cursor:pointer;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-truck" style="color:var(--green);font-size:20px"></i>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--green)">Excel trié par fournisseur</div>
+            <div style="font-size:11px;color:var(--text3)">Un groupe par fournisseur, avec sous-totaux</div>
+          </div>
+        </div>
+        <span class="badge badge-green">${alertProds.length} produits</span>
+      </div>
+      <div onclick="exportGroupedExcel('category');closeModal()"
+        style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+               background:var(--amber-dim);border:2px solid var(--amber);border-radius:10px;
+               cursor:pointer;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-tag" style="color:var(--amber);font-size:20px"></i>
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--amber)">Excel trié par catégorie</div>
+            <div style="font-size:11px;color:var(--text3)">Un groupe par catégorie, avec sous-totaux</div>
+          </div>
+        </div>
+        <span class="badge badge-amber">${alertProds.length} produits</span>
+      </div>
+
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Export simple</div>
       <!-- Export complet -->
       <div onclick="exportCommandeExcel(null);closeModal()"
         style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
@@ -3906,13 +4176,13 @@ function openExportModal() {
           <i class="ti ti-file-spreadsheet" style="color:var(--accent);font-size:20px"></i>
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--accent)">Toutes les catégories</div>
-            <div style="font-size:11px;color:var(--text3)">Export complet de tous les produits à commander</div>
+            <div style="font-size:11px;color:var(--text3)">Liste unique de tous les produits à commander</div>
           </div>
         </div>
         <span class="badge badge-orange">${alertProds.length} produits</span>
       </div>
       <!-- Par catégorie -->
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Par catégorie</div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Une seule catégorie</div>
       <div style="display:flex;flex-direction:column;gap:6px">${catOptions}</div>
     </div>
   `, [{label:'Fermer', cls:'', action:'closeModal()'}]);
