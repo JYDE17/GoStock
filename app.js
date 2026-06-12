@@ -1910,6 +1910,8 @@ async function vSettings(c) {
   const { data: dbUoms  } = await sb.from('uoms').select('*').order('name');
   const { data: dbCats  } = await sb.from('categories').select('*').order('name');
   const { data: dbSups  } = await sb.from('suppliers').select('*').order('name');
+  const { data: dbNotifs } = await sb.from('notification_schedules').select('*').order('created_at');
+  _notifs = dbNotifs || [];
 
   c.innerHTML = `
   <div style="max-width:800px;display:flex;flex-direction:column;gap:20px">
@@ -2010,7 +2012,174 @@ async function vSettings(c) {
       </div>
     </div>
 
+    <!-- ── NOTIFICATIONS AUTOMATIQUES ── -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title"><i class="ti ti-mail" style="color:var(--purple);margin-right:8px"></i>Notifications automatiques</div>
+        <button class="btn btn-primary" onclick="openAddNotif()"><i class="ti ti-plus"></i> Ajouter</button>
+      </div>
+      <div style="padding:10px 16px;background:var(--amber-dim);border-bottom:1px solid var(--amber);font-size:12px;color:var(--amber);display:flex;align-items:center;gap:8px;line-height:1.4">
+        <i class="ti ti-alert-triangle" style="flex-shrink:0"></i>
+        <span>Le moteur d'envoi n'est pas encore branché — tes règles sont enregistrées, mais aucun courriel ne part pour l'instant. On l'activera avec ta clé d'envoi (Resend).</span>
+      </div>
+      <table>
+        <thead><tr><th>Rapport</th><th>Quand</th><th>Courriel</th><th>Actif</th><th>Action</th></tr></thead>
+        <tbody>
+          ${_notifs.length ? _notifs.map(n => `<tr>
+            <td style="font-weight:500">${escHtml(notifReportLabel(n.report))}</td>
+            <td style="color:var(--text2)">${escHtml(notifWhen(n))}</td>
+            <td style="color:var(--text2);font-size:12px;font-family:var(--font-mono)">${escHtml(n.email)}</td>
+            <td onclick="event.stopPropagation()">${renderNotifToggle(n)}</td>
+            <td>
+              <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="editNotif(${n.id})"><i class="ti ti-pencil"></i></button>
+              <button class="btn btn-danger" style="height:28px;padding:0 10px;font-size:12px;margin-left:4px" onclick="deleteNotif(${n.id})"><i class="ti ti-trash"></i></button>
+            </td>
+          </tr>`).join('') : '<tr><td colspan="5" class="empty" style="padding:24px">Aucune notification — ajoutes-en une</td></tr>'}
+        </tbody>
+      </table>
+      <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
+        Choisis le rapport, la fréquence (quotidien, hebdo, mensuel ou une date précise), l'heure et le ou les courriels (sépare-les par des virgules).
+      </div>
+    </div>
+
   </div>`;
+}
+
+// ── NOTIFICATIONS AUTOMATIQUES ────────────────────────────
+let _notifs = [];
+
+function notifReportLabel(r){
+  return ({rupture:'Alertes de rupture / stock faible', forecast:'Prévisions de rupture',
+    lot_achat:"Lot d'achat (à commander)", inventaire:'Inventaire complet'})[r] || r;
+}
+function notifWhen(n){
+  const days=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const t=n.run_time||'08:00';
+  if(n.frequency==='daily')   return `Tous les jours à ${t}`;
+  if(n.frequency==='weekly')  return `Chaque ${days[n.day_of_week??1]} à ${t}`;
+  if(n.frequency==='monthly') return `Le ${n.day_of_month||1} de chaque mois à ${t}`;
+  if(n.frequency==='once')    return `Le ${n.run_date||'?'} à ${t}`;
+  return t;
+}
+function renderNotifToggle(n){
+  const on = n.active !== false;
+  return `<div onclick="toggleNotif(${n.id})" style="width:40px;height:22px;border-radius:11px;position:relative;cursor:pointer;flex-shrink:0;
+    background:${on?'var(--green)':'var(--bg3)'};border:1px solid ${on?'var(--green)':'var(--border2)'};transition:all .2s" title="${on?'Désactiver':'Activer'}">
+    <div style="position:absolute;top:2px;left:${on?'18px':'2px'};width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>
+  </div>`;
+}
+
+function _notifFields(n){
+  n = n || {};
+  const freq = n.frequency || 'daily';
+  const days = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  return `
+    <div class="form-group"><label class="form-label">Rapport à envoyer *</label>
+      <select id="notif-report" class="form-input">
+        <option value="rupture" ${n.report==='rupture'?'selected':''}>Alertes de rupture / stock faible</option>
+        <option value="forecast" ${n.report==='forecast'?'selected':''}>Prévisions de rupture</option>
+        <option value="lot_achat" ${n.report==='lot_achat'?'selected':''}>Lot d'achat (à commander)</option>
+        <option value="inventaire" ${n.report==='inventaire'?'selected':''}>Inventaire complet</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Fréquence *</label>
+        <select id="notif-freq" class="form-input" onchange="notifFreqChange()">
+          <option value="daily" ${freq==='daily'?'selected':''}>Tous les jours</option>
+          <option value="weekly" ${freq==='weekly'?'selected':''}>Chaque semaine</option>
+          <option value="monthly" ${freq==='monthly'?'selected':''}>Chaque mois</option>
+          <option value="once" ${freq==='once'?'selected':''}>Une seule fois (date précise)</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Heure *</label>
+        <input id="notif-time" type="time" class="form-input" value="${n.run_time||'08:00'}">
+      </div>
+    </div>
+    <div class="form-group" id="notif-row-dow" style="display:${freq==='weekly'?'':'none'}">
+      <label class="form-label">Jour de la semaine</label>
+      <select id="notif-dow" class="form-input">
+        ${days.map((d,i)=>`<option value="${i}" ${(n.day_of_week??1)===i?'selected':''}>${d.charAt(0).toUpperCase()+d.slice(1)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group" id="notif-row-dom" style="display:${freq==='monthly'?'':'none'}">
+      <label class="form-label">Jour du mois (1–31)</label>
+      <input id="notif-dom" type="number" min="1" max="31" class="form-input" value="${n.day_of_month||1}">
+    </div>
+    <div class="form-group" id="notif-row-date" style="display:${freq==='once'?'':'none'}">
+      <label class="form-label">Date</label>
+      <input id="notif-date" type="date" class="form-input" value="${n.run_date||''}">
+    </div>
+    <div class="form-group"><label class="form-label">Courriel(s) *</label>
+      <input id="notif-email" type="text" class="form-input" placeholder="toi@goplex.com, gerant@goplex.com" value="${escHtml(n.email||'')}">
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Plusieurs destinataires : sépare-les par des virgules.</div>
+    </div>`;
+}
+
+function notifFreqChange(){
+  const f = document.getElementById('notif-freq')?.value;
+  const set = (id,show)=>{ const el=document.getElementById(id); if(el) el.style.display = show?'':'none'; };
+  set('notif-row-dow',  f==='weekly');
+  set('notif-row-dom',  f==='monthly');
+  set('notif-row-date', f==='once');
+}
+
+function _readNotifForm(){
+  const freq = document.getElementById('notif-freq')?.value;
+  return {
+    report:       document.getElementById('notif-report')?.value,
+    frequency:    freq,
+    run_time:     document.getElementById('notif-time')?.value || '08:00',
+    day_of_week:  freq==='weekly'  ? parseInt(document.getElementById('notif-dow')?.value) : null,
+    day_of_month: freq==='monthly' ? parseInt(document.getElementById('notif-dom')?.value) : null,
+    run_date:     freq==='once'    ? (document.getElementById('notif-date')?.value || null) : null,
+    email:        (document.getElementById('notif-email')?.value || '').trim(),
+  };
+}
+
+function openAddNotif(){
+  openModal('Nouvelle notification', _notifFields(),
+    [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Ajouter',cls:'btn-primary',action:'submitAddNotif()'}]);
+}
+async function submitAddNotif(){
+  const v = _readNotifForm();
+  if(!v.email){ toast('Courriel obligatoire','error'); return; }
+  if(v.frequency==='once' && !v.run_date){ toast('Choisis une date','error'); return; }
+  const { error } = await sb.from('notification_schedules').insert(v);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast('✓ Notification ajoutée','success');
+  closeModal();
+  vSettings(document.getElementById('main-content'));
+}
+function editNotif(id){
+  const n = _notifs.find(x=>x.id===id);
+  if(!n){ toast('Notification introuvable','error'); return; }
+  openModal('Modifier la notification', _notifFields(n),
+    [{label:'Fermer',cls:'',action:'closeModal()'},{label:'Sauvegarder',cls:'btn-primary',action:`submitEditNotif(${id})`}]);
+}
+async function submitEditNotif(id){
+  const v = _readNotifForm();
+  if(!v.email){ toast('Courriel obligatoire','error'); return; }
+  if(v.frequency==='once' && !v.run_date){ toast('Choisis une date','error'); return; }
+  const { error } = await sb.from('notification_schedules').update(v).eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast('✓ Notification mise à jour','success');
+  closeModal();
+  vSettings(document.getElementById('main-content'));
+}
+async function deleteNotif(id){
+  if(!confirm('Supprimer cette notification ?')) return;
+  const { error } = await sb.from('notification_schedules').delete().eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast('Notification supprimée','success');
+  vSettings(document.getElementById('main-content'));
+}
+async function toggleNotif(id){
+  const n = _notifs.find(x=>x.id===id); if(!n) return;
+  const next = (n.active === false);   // si éteint -> allume
+  const { error } = await sb.from('notification_schedules').update({active:next}).eq('id', id);
+  if(error){ toast('Erreur: '+error.message,'error'); return; }
+  toast(next?'✓ Notification activée':'Notification désactivée','success');
+  vSettings(document.getElementById('main-content'));
 }
 
 // ── UOM CRUD ──────────────────────────────────────────────
