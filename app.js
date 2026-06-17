@@ -90,6 +90,10 @@ async function onSignedIn(u) {
   const navPending = document.getElementById('nav-pending-inv');
   if(navPending) navPending.style.display = (isAdmin||isMgr) ? '' : 'none';
 
+  // Pending withdrawals nav (manager + admin)
+  const navWd = document.getElementById('nav-pending-wd');
+  if(navWd) navWd.style.display = (isAdmin||isMgr) ? '' : 'none';
+
   // More sheet — settings/users only for admin
   const moreSettings = document.getElementById('more-settings');
   const moreUsers    = document.getElementById('more-users');
@@ -181,6 +185,11 @@ async function loadAll() {
       if(pendingInventories.length > prevCount) {
         toast(`📋 ${pendingInventories.length} inventaire${pendingInventories.length>1?'s':''} en attente de validation`, 'info');
       }
+      const prevWd = pendingWithdrawals.length;
+      await loadPendingWithdrawals();
+      if(pendingWithdrawals.length > prevWd) {
+        toast(`📦 ${pendingWithdrawals.length} retrait${pendingWithdrawals.length>1?'s':''} en attente d'approbation`, 'info');
+      }
     }
   } catch(e) { toast('Erreur chargement: '+e.message,'error'); }
   document.getElementById('refresh-icon').classList.remove('spin');
@@ -213,7 +222,7 @@ function nav(view, el) {
     locations:'Emplacements',movements:'Mouvements',receive:'Réceptionner',
     transfer:'Transfert',reduce:'Réduire stock',inventory:'Faire inventaire',
     create:'Créer article',users:'Utilisateurs',
-    pendinginv:'Inventaires à valider',forecast:'Prévisions de rupture',
+    pendinginv:'Inventaires à valider',pendingwd:'Retraits à approuver',forecast:'Prévisions de rupture',
     settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
@@ -243,7 +252,7 @@ function renderView(v) {
   const map={dashboard:vDashboard,alerts:vAlerts,products:vProducts,
     locations:vLocations,movements:vMovements,receive:vReceive,
     transfer:vTransfer,reduce:vReduce,inventory:vInventory,
-    create:vCreate,users:vUsers,pendinginv:vPendingInventories,forecast:vForecast,settings:vSettings,auditlog:vAuditLog};
+    create:vCreate,users:vUsers,pendinginv:vPendingInventories,pendingwd:vPendingWithdrawals,forecast:vForecast,settings:vSettings,auditlog:vAuditLog};
   (map[v]||vDashboard)(c);
 }
 function onSearch() {
@@ -670,11 +679,16 @@ function vReceive(c) {
   // Auto-focus scanner input
   setTimeout(()=>document.getElementById('recv-scanner')?.focus(), 100);
 }
+function _defaultLocFor(pid, selId){
+  const sel=document.getElementById(selId); if(!sel||!pid) return;
+  const best=[...(stockMap[pid]?.byLocation||[])].sort((a,b)=>b.qty-a.qty)[0];
+  if(best && best.locId && [...sel.options].some(o=>o.value===String(best.locId))) sel.value=String(best.locId);
+}
 function updateRecvInfo() {
   const pid=parseInt(document.getElementById('recv-product').value);
   const p=products.find(x=>x.id===pid);
   const box=document.getElementById('recv-info');
-  if(p){box.style.display='';document.getElementById('recv-cur').textContent=`${Math.round(getQty(pid))}`;}
+  if(p){box.style.display='';document.getElementById('recv-cur').textContent=`${Math.round(getQty(pid))}`;_defaultLocFor(pid,'recv-loc');}
   else{box.style.display='none';}
 }
 async function submitReceive() {
@@ -780,7 +794,7 @@ function vTransfer(c) {
     </tbody></table>
   </div></div>`;
 }
-function updateTfInfo(){const pid=parseInt(document.getElementById('tf-product').value);const box=document.getElementById('tf-info');if(pid){box.style.display='';document.getElementById('tf-qty-info').textContent=Math.round(getQty(pid));}else{box.style.display='none';}}
+function updateTfInfo(){const pid=parseInt(document.getElementById('tf-product').value);const box=document.getElementById('tf-info');if(pid){box.style.display='';document.getElementById('tf-qty-info').textContent=Math.round(getQty(pid));_defaultLocFor(pid,'tf-from');checkTfLocs();}else{box.style.display='none';}}
 function checkTfLocs(){const f=document.getElementById('tf-from')?.value,t=document.getElementById('tf-to')?.value;document.getElementById('tf-warn').style.display=(f&&t&&f===t)?'':'none';}
 async function submitTransfer() {
   const pid=parseInt(document.getElementById('tf-product').value);
@@ -861,7 +875,7 @@ function vReduce(c) {
     </div>
   </div></div>`;
 }
-function updateRedInfo(){const pid=parseInt(document.getElementById('red-product').value);const box=document.getElementById('red-info');if(pid){box.style.display='';document.getElementById('red-cur').textContent=Math.round(getQty(pid));}else box.style.display='none';}
+function updateRedInfo(){const pid=parseInt(document.getElementById('red-product').value);const box=document.getElementById('red-info');if(pid){box.style.display='';document.getElementById('red-cur').textContent=Math.round(getQty(pid));_defaultLocFor(pid,'red-loc');}else box.style.display='none';}
 async function submitReduce() {
   const pid=parseInt(document.getElementById('red-product').value);
   const qty=parseFloat(document.getElementById('red-qty').value);
@@ -2493,7 +2507,7 @@ function mScanUI(opts) {
     </button>
     <div id="ms-history-wrap" style="display:none">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Session en cours</div>
-      <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
+      <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow-y:auto;max-height:340px"></div>
     </div>
   </div>`;
   window._msCtx={prefix:opts.prefix,selectedProduct:null,sessionItems:[],locs};
@@ -2557,6 +2571,17 @@ function msSelectProduct(id){
   document.getElementById('ms-qty-zone').style.display='';
   const qtyInput=document.getElementById('ms-qty');
   if(qtyInput){qtyInput.value='';qtyInput.focus();qtyInput.select();}
+
+  // Pré-sélection de l'emplacement par défaut = celui où le produit a le plus de stock
+  const best = [...(stockMap[p.id]?.byLocation||[])].sort((a,b)=>b.qty-a.qty)[0];
+  if(best && best.locId){
+    const selId = {recv:'ms-recv-loc', red:'ms-red-loc', tf:'ms-tf-from'}[window._msCtx?.prefix];
+    if(selId){
+      const sel = document.getElementById(selId);
+      if(sel && [...sel.options].some(o=>o.value===String(best.locId))) sel.value = String(best.locId);
+    }
+  }
+
   msCheckReady(window._msCtx?.prefix);
   if(navigator.vibrate)navigator.vibrate(40);
 }
@@ -2601,7 +2626,7 @@ async function msSubmit(prefix){
     await loadAll();
     const si=window._msCtx.sessionItems;si.unshift({name:p.name,qty,prefix});
     const hw=document.getElementById('ms-history-wrap');const he=document.getElementById('ms-history');
-    if(he&&hw){hw.style.display='';he.innerHTML=si.slice(0,5).map(item=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px"><i class="ti ti-check" style="color:var(--green);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--green);flex-shrink:0">+${item.qty}</span></div>`).join('');}
+    if(he&&hw){hw.style.display='';he.innerHTML=si.map(item=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px"><i class="ti ti-check" style="color:var(--green);flex-shrink:0"></i><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(item.name)}</span><span style="font-family:var(--font-mono);font-weight:700;color:var(--green);flex-shrink:0">+${item.qty}</span></div>`).join('');}
     if(navigator.vibrate)navigator.vibrate([40,20,40]);
     toast(`✓ ${p.name} — ${qty} unités`,'success');
     const pc=document.getElementById('ms-product-card');if(pc)pc.style.display='none';
@@ -2756,7 +2781,7 @@ function mStartInventoryAtLoc(locId, locName) {
     <!-- Historique session -->
     <div id="ms-history-wrap" style="display:none">
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Comptés cette session</div>
-      <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow:hidden"></div>
+      <div id="ms-history" style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;overflow-y:auto;max-height:340px"></div>
     </div>
 
   </div>`;
@@ -3081,6 +3106,312 @@ async function submitRejectInventory(invId) {
   closeModal();
   await loadPendingInventories();
   vPendingInventories(document.getElementById('main-content'));
+}
+
+
+// ══ RETRAITS EMPLOYÉ — approbation (admin/manager) ══════════
+let pendingWithdrawals = [];
+
+async function loadPendingWithdrawals() {
+  const {data} = await sb.from('pending_withdrawals')
+    .select('*').eq('status','pending').order('created_at',{ascending:false});
+  pendingWithdrawals = data || [];
+  updateWithdrawBadge();
+}
+function updateWithdrawBadge() {
+  const cnt = pendingWithdrawals.length;
+  const badge = document.getElementById('pending-wd-badge');
+  if(badge){ badge.textContent=cnt; badge.classList.toggle('hidden', cnt===0); }
+}
+
+async function vPendingWithdrawals(c) {
+  c = c || document.getElementById('main-content');
+  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
+  await loadPendingWithdrawals();
+  const all = pendingWithdrawals;
+  const internalLocs = locations.filter(l=>l.usage==='internal');
+
+  if(!all.length) {
+    c.innerHTML = `<div class="empty">
+      <i class="ti ti-package-export" style="display:block;font-size:48px;opacity:.3;margin-bottom:12px;color:var(--green)"></i>
+      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Aucun retrait en attente</div>
+      <div style="font-size:13px;color:var(--text3)">Les retraits soumis par les employés apparaîtront ici</div>
+    </div>`;
+    return;
+  }
+
+  c.innerHTML = `
+  <div style="margin-bottom:16px;font-size:14px;font-weight:600">${all.length} retrait${all.length>1?'s':''} en attente d'approbation</div>
+  ${all.map(wd => {
+    const items = typeof wd.items==='string' ? JSON.parse(wd.items) : (wd.items||[]);
+    let defLoc = internalLocs[0]?.id;
+    const first = items[0];
+    if(first){
+      const byLoc = stockMap[first.product_id]?.byLocation||[];
+      const best = [...byLoc].sort((a,b)=>b.qty-a.qty)[0];
+      if(best) defLoc = best.locId;
+    }
+    return `<div class="table-card" style="margin-bottom:16px">
+      <div class="table-toolbar">
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px">
+            <i class="ti ti-user" style="color:var(--purple)"></i>
+            Employé : <strong>${escHtml(wd.username)}</strong>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">
+            ${fmtDate(wd.created_at)} · ${items.length} produit${items.length>1?'s':''}${wd.notes?` · « ${escHtml(wd.notes)} »`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="wd-loc-${wd.id}" class="form-input" style="width:auto;height:34px">
+            ${internalLocs.map(l=>`<option value="${l.id}" ${l.id===defLoc?'selected':''}>${escHtml(l.name)}</option>`).join('')}
+          </select>
+          <button class="btn btn-danger" onclick="rejectWithdrawal('${wd.id}')"><i class="ti ti-x"></i> Rejeter</button>
+          <button class="btn btn-success" onclick="approveWithdrawal('${wd.id}')"><i class="ti ti-check"></i> Approuver & Réduire</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Produit</th><th style="text-align:center">Stock actuel</th><th style="text-align:center">Qté retirée</th><th style="text-align:center">Après</th></tr></thead>
+        <tbody>
+          ${items.map(it => {
+            const cur = Math.round(getQty(it.product_id));
+            const after = cur - (it.quantity||0);
+            return `<tr style="${after<0?'background:rgba(242,86,104,.06)':''}">
+              <td style="font-weight:500">${escHtml(it.product_name||'—')}</td>
+              <td style="text-align:center;font-family:var(--font-mono)">${cur}</td>
+              <td style="text-align:center;font-family:var(--font-mono);font-weight:700;color:var(--red)">-${it.quantity}</td>
+              <td style="text-align:center;font-family:var(--font-mono);font-weight:600;color:var(--${after<0?'red':'text1'})">${after}${after<0?' ⚠':''}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+  }).join('')}`;
+}
+
+async function approveWithdrawal(wdId) {
+  const wd = pendingWithdrawals.find(x=>String(x.id)===String(wdId)); if(!wd) return;
+  const items = typeof wd.items==='string' ? JSON.parse(wd.items) : (wd.items||[]);
+  const locId = parseInt(document.getElementById('wd-loc-'+wdId)?.value);
+  if(!locId){ toast('Choisis un emplacement','error'); return; }
+  const locName = locations.find(l=>l.id===locId)?.name || '';
+
+  let done=0;
+  for(const it of items){
+    const qty = it.quantity||0;
+    if(qty<=0) continue;
+    const locStock = stockMap[it.product_id]?.byLocation.find(b=>b.locId===locId);
+    const newQty = Math.max(0, (locStock?.qty||0) - qty);
+    await sb.from('stock').upsert(
+      {product_id:it.product_id, location_id:locId, quantity:newQty},
+      {onConflict:'product_id,location_id'}
+    );
+    await sb.from('movements').insert({
+      product_id:    it.product_id,
+      location_from: locId,
+      quantity:      -qty,
+      movement_type: 'reduce',
+      user_id:       user.id,
+      user_email:    profile?.email,
+      notes:         `Retrait employé « ${wd.username} » — approuvé par ${profile?.full_name||profile?.email}`,
+    });
+    done++;
+  }
+
+  await sb.from('pending_withdrawals').update({
+    status:'approved', reviewed_by:user.id, reviewed_email:profile?.email, reviewed_at:new Date().toISOString(),
+  }).eq('id', wd.id);
+
+  await logAction('reduce',{notes:`Retrait approuvé (${wd.username}) — ${done} produit(s) @ ${locName}`});
+  toast(`✓ Retrait approuvé — ${done} produit${done>1?'s':''} retiré${done>1?'s':''}`,'success');
+  await loadAll();
+  await loadPendingWithdrawals();
+  vPendingWithdrawals(document.getElementById('main-content'));
+}
+
+function rejectWithdrawal(wdId) {
+  const wd = pendingWithdrawals.find(x=>String(x.id)===String(wdId)); if(!wd) return;
+  openModal('Rejeter ce retrait ?', `
+    <div style="background:var(--red-dim);border:1px solid rgba(242,86,104,.3);border-radius:10px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
+      Le retrait soumis par <strong style="color:var(--text1)">${escHtml(wd.username)}</strong> sera rejeté sans toucher au stock.
+    </div>
+    <div class="form-group"><label class="form-label">Raison (optionnel)</label>
+      <input id="wd-reject-reason" type="text" class="form-input" placeholder="ex: produit déjà compté, erreur…">
+    </div>
+  `, [
+    {label:'Annuler', cls:'', action:'closeModal()'},
+    {label:'<i class="ti ti-x"></i> Rejeter', cls:'btn-danger', action:`submitRejectWithdrawal('${wdId}')`},
+  ]);
+}
+
+async function submitRejectWithdrawal(wdId) {
+  const reason = document.getElementById('wd-reject-reason')?.value?.trim();
+  await sb.from('pending_withdrawals').update({
+    status:'rejected', reviewed_by:user.id, reviewed_email:profile?.email, reviewed_at:new Date().toISOString(), reject_reason:reason||null,
+  }).eq('id', wdId);
+  toast('Retrait rejeté','info');
+  closeModal();
+  await loadPendingWithdrawals();
+  vPendingWithdrawals(document.getElementById('main-content'));
+}
+
+// ══ KIOSQUE EMPLOYÉ — retrait sans authentification ═════════
+let _kiosk = { username:'', products:[], cart:[] };
+
+function openKiosk() {
+  _kiosk = { username:'', products:[], cart:[] };
+  document.getElementById('auth-wrap')?.classList.add('hidden');
+  document.getElementById('kiosk-wrap')?.classList.remove('hidden');
+  kioskRenderLogin();
+}
+function closeKiosk() {
+  document.getElementById('kiosk-wrap')?.classList.add('hidden');
+  document.getElementById('auth-wrap')?.classList.remove('hidden');
+  _kiosk = { username:'', products:[], cart:[] };
+}
+
+function kioskRenderLogin() {
+  const w = document.getElementById('kiosk-wrap');
+  w.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo" style="background:transparent;width:64px;height:64px"><i class="ti ti-package-export" style="font-size:40px;color:var(--accent)"></i></div>
+        <h1>Retrait de stock</h1>
+        <p>Entre ton nom d'utilisateur pour commencer</p>
+      </div>
+      <div class="auth-body" style="padding:28px 32px">
+        <input id="kiosk-user" class="auth-input" type="text" placeholder="Nom d'utilisateur" autocomplete="off" onkeydown="if(event.key==='Enter')kioskStart()">
+        <button class="auth-btn" onclick="kioskStart()">Continuer</button>
+        <button class="auth-btn" style="background:transparent;color:var(--text3);border:1px solid var(--border);margin-top:8px" onclick="closeKiosk()">Annuler</button>
+      </div>
+    </div>`;
+  setTimeout(()=>document.getElementById('kiosk-user')?.focus(), 100);
+}
+
+async function kioskStart() {
+  const username = document.getElementById('kiosk-user')?.value?.trim();
+  if(!username){ toast("Entre ton nom d'utilisateur",'error'); return; }
+  _kiosk.username = username;
+  const w = document.getElementById('kiosk-wrap');
+  w.innerHTML = '<div class="auth-card"><div class="empty" style="padding:60px"><i class="ti ti-loader spin" style="font-size:32px"></i></div></div>';
+  try {
+    const { data, error } = await sb.rpc('kiosk_products');
+    if(error) throw error;
+    _kiosk.products = data || [];
+    kioskRenderWithdraw();
+  } catch(e) {
+    toast('Erreur de chargement: '+e.message,'error');
+    kioskRenderLogin();
+  }
+}
+
+function kioskRenderWithdraw() {
+  const w = document.getElementById('kiosk-wrap');
+  w.innerHTML = `
+    <div class="auth-card" style="width:440px;max-height:92vh;display:flex;flex-direction:column">
+      <div class="auth-header" style="padding:18px 24px;text-align:left;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Retrait de stock</div>
+          <h1 style="font-size:18px">Bonjour ${escHtml(_kiosk.username)}</h1>
+        </div>
+        <button class="btn" onclick="closeKiosk()" style="height:34px" title="Quitter"><i class="ti ti-logout"></i></button>
+      </div>
+      <div style="padding:16px 24px;border-bottom:1px solid var(--border)">
+        <input id="kiosk-search" class="auth-input" style="margin-bottom:8px" type="text" placeholder="Cherche un produit…" oninput="kioskFilter()" autocomplete="off">
+        <div id="kiosk-results" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:16px 24px;min-height:120px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:600;margin-bottom:8px">Produits à retirer</div>
+        <div id="kiosk-cart"></div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid var(--border)">
+        <input id="kiosk-note" class="auth-input" style="margin-bottom:10px" type="text" placeholder="Note (optionnel)" autocomplete="off">
+        <button class="auth-btn" id="kiosk-submit" onclick="kioskSubmit()">Soumettre le retrait</button>
+      </div>
+    </div>`;
+  kioskRenderCart();
+  setTimeout(()=>document.getElementById('kiosk-search')?.focus(), 100);
+}
+
+function kioskFilter() {
+  const q = (document.getElementById('kiosk-search')?.value||'').toLowerCase().trim();
+  const box = document.getElementById('kiosk-results');
+  if(!box) return;
+  if(!q){ box.innerHTML=''; return; }
+  const matches = _kiosk.products.filter(p =>
+    (p.name||'').toLowerCase().includes(q) ||
+    (p.reference||'').toLowerCase().includes(q) ||
+    (p.barcode||'').toLowerCase().includes(q)
+  ).slice(0,8);
+  box.innerHTML = matches.length ? matches.map(p => `
+    <div onclick="kioskAddItem(${p.id})" style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;cursor:pointer">
+      <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name)}</span>
+      <span style="font-size:11px;color:var(--text3);font-family:var(--font-mono);flex-shrink:0;margin-left:8px">${Math.round(p.qty||0)} en stock</span>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px">Aucun résultat</div>';
+}
+
+function kioskAddItem(pid) {
+  const p = _kiosk.products.find(x=>x.id===pid); if(!p) return;
+  const existing = _kiosk.cart.find(c=>c.product_id===pid);
+  if(existing) existing.quantity++;
+  else _kiosk.cart.push({product_id:pid, product_name:p.name, quantity:1});
+  const s=document.getElementById('kiosk-search'); if(s) s.value='';
+  const r=document.getElementById('kiosk-results'); if(r) r.innerHTML='';
+  kioskRenderCart();
+}
+function kioskSetQty(pid, val) {
+  const it = _kiosk.cart.find(c=>c.product_id===pid); if(!it) return;
+  it.quantity = Math.max(1, parseInt(val)||1);
+}
+function kioskRemoveItem(pid) {
+  _kiosk.cart = _kiosk.cart.filter(c=>c.product_id!==pid);
+  kioskRenderCart();
+}
+function kioskRenderCart() {
+  const box = document.getElementById('kiosk-cart'); if(!box) return;
+  if(!_kiosk.cart.length){ box.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:12px 0">Cherche un produit ci-dessus et tape dessus pour l\'ajouter.</div>'; return; }
+  box.innerHTML = _kiosk.cart.map(it => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:6px">
+      <div style="flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.product_name)}</div>
+      <input type="number" min="1" value="${it.quantity}" onchange="kioskSetQty(${it.product_id},this.value)" style="width:64px;height:38px;text-align:center;background:var(--bg1);border:1px solid var(--border2);border-radius:8px;color:var(--text1);font-family:var(--font-mono);font-size:16px;outline:none">
+      <button onclick="kioskRemoveItem(${it.product_id})" style="width:34px;height:34px;border:none;background:var(--red-dim);color:var(--red);border-radius:8px;cursor:pointer"><i class="ti ti-x"></i></button>
+    </div>`).join('');
+}
+
+async function kioskSubmit() {
+  if(!_kiosk.cart.length){ toast('Ajoute au moins un produit','error'); return; }
+  const btn = document.getElementById('kiosk-submit');
+  if(btn){ btn.disabled=true; btn.textContent='Envoi…'; }
+  const note = document.getElementById('kiosk-note')?.value?.trim() || null;
+  try {
+    const { error } = await sb.rpc('kiosk_submit_withdrawal', {
+      p_username: _kiosk.username,
+      p_items:    _kiosk.cart,
+      p_notes:    note,
+    });
+    if(error) throw error;
+    kioskRenderDone();
+  } catch(e) {
+    toast('Erreur: '+e.message,'error');
+    if(btn){ btn.disabled=false; btn.textContent='Soumettre le retrait'; }
+  }
+}
+
+function kioskRenderDone() {
+  const n = _kiosk.cart.length;
+  const w = document.getElementById('kiosk-wrap');
+  w.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-body" style="padding:48px 32px;text-align:center">
+        <div style="width:72px;height:72px;border-radius:50%;background:var(--green-dim);display:flex;align-items:center;justify-content:center;margin:0 auto 18px">
+          <i class="ti ti-check" style="font-size:38px;color:var(--green)"></i>
+        </div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Retrait soumis !</div>
+        <div style="font-size:13px;color:var(--text3);line-height:1.5">${n} produit${n>1?'s':''} envoyé${n>1?'s':''} pour approbation.<br>Un responsable doit l'approuver pour qu'il soit retiré du stock.</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:20px"><i class="ti ti-loader spin"></i> Déconnexion automatique…</div>
+      </div>
+    </div>`;
+  setTimeout(closeKiosk, 3500);
 }
 
 

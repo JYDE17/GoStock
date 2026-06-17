@@ -197,7 +197,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 /* ── MORE SHEET ── */
 .more-sheet-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;backdrop-filter:blur(4px)}
 .more-sheet-overlay.show{display:block}
-.more-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--bg1);border-top:1px solid var(--border2);border-radius:18px 18px 0 0;z-index:301;padding:10px 0 calc(80px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1)}
+.more-sheet{position:fixed;bottom:0;left:0;right:0;background:var(--bg1);border-top:1px solid var(--border2);border-radius:18px 18px 0 0;z-index:301;padding:10px 0 calc(80px + env(safe-area-inset-bottom));transform:translateY(100%);transition:transform .3s cubic-bezier(.32,.72,0,1);max-height:88vh;overflow-y:auto}
 .more-sheet.show{transform:translateY(0)}
 .more-sheet-handle{width:32px;height:3px;background:var(--border2);border-radius:2px;margin:0 auto 14px}
 .more-sheet-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);padding:0 18px 8px;font-weight:700}
@@ -322,10 +322,19 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
         <input id="l-pw"    class="auth-input" type="password" placeholder="Mot de passe" onkeydown="if(event.key==='Enter')doLogin()">
         <button class="auth-btn" id="l-btn" onclick="doLogin()">Se connecter</button>
       </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <button class="auth-btn" style="background:var(--bg2);color:var(--text1);border:1px solid var(--border2)" onclick="openKiosk()">
+          <i class="ti ti-package-export" style="margin-right:6px"></i> Retrait rapide (employé)
+        </button>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px;text-align:center">Pour retirer du stock avec ton nom d'utilisateur, sans mot de passe</div>
+      </div>
     </div>
     <div class="auth-footer">Jeremy Dionne © 2026</div>
   </div>
 </div>
+
+<!-- ══ KIOSQUE RETRAIT EMPLOYÉ ══════════════════════════════ -->
+<div class="auth-wrap hidden" id="kiosk-wrap" style="z-index:1100"></div>
 
 <!-- ══ APP ═══════════════════════════════════════════════════ -->
 <div class="app hidden" id="main-app">
@@ -368,6 +377,10 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
       <div class="nav-item" id="nav-pending-inv" style="display:none" onclick="nav('pendinginv',this)">
         <i class="ti ti-clipboard-check"></i>Inventaires
         <span class="nav-badge hidden" id="pending-inv-badge">0</span>
+      </div>
+      <div class="nav-item" id="nav-pending-wd" style="display:none" onclick="nav('pendingwd',this)">
+        <i class="ti ti-package-export"></i>Retraits
+        <span class="nav-badge hidden" id="pending-wd-badge">0</span>
       </div>
       <div class="nav-item" onclick="nav('users',this)"><i class="ti ti-users"></i>Utilisateurs</div>
       <div class="nav-item" onclick="nav('settings',this)"><i class="ti ti-settings"></i>Paramètres</div>
