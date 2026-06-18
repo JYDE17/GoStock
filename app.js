@@ -223,7 +223,7 @@ function nav(view, el) {
     transfer:'Transfert',reduce:'Réduire stock',inventory:'Faire inventaire',
     create:'Créer article',users:'Utilisateurs',
     pendinginv:'Inventaires à valider',pendingwd:'Retraits à approuver',forecast:'Prévisions de rupture',
-    settings:'Paramètres',auditlog:'Journal d\'audit'};
+    finance:'Financier',settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
   syncMobTabs(view);
@@ -252,7 +252,7 @@ function renderView(v) {
   const map={dashboard:vDashboard,alerts:vAlerts,products:vProducts,
     locations:vLocations,movements:vMovements,receive:vReceive,
     transfer:vTransfer,reduce:vReduce,inventory:vInventory,
-    create:vCreate,users:vUsers,pendinginv:vPendingInventories,pendingwd:vPendingWithdrawals,forecast:vForecast,settings:vSettings,auditlog:vAuditLog};
+    create:vCreate,users:vUsers,pendinginv:vPendingInventories,pendingwd:vPendingWithdrawals,forecast:vForecast,finance:vFinance,settings:vSettings,auditlog:vAuditLog};
   (map[v]||vDashboard)(c);
 }
 function onSearch() {
@@ -504,9 +504,10 @@ function vProducts(c) {
   if(filterStatus!=='all') list=list.filter(p=>getStatus(getQty(p.id), p.id).key===filterStatus);
   if(filterCat!=='all') list=list.filter(p=>p.category_id==filterCat);
   if(searchQ) list=list.filter(p=>(p.name||'').toLowerCase().includes(searchQ)||(p.reference||'').toLowerCase().includes(searchQ)||(p.barcode||'').toLowerCase().includes(searchQ));
+  const dispVal=list.reduce((s,p)=>s+getQty(p.id)*(p.cost_price||0),0);
   c.innerHTML=`<div class="table-card">
     <div class="table-toolbar">
-      <div class="table-toolbar-title">Produits <span style="color:var(--text3);font-size:12px">${list.length}/${products.length}</span></div>
+      <div class="table-toolbar-title">Produits <span style="color:var(--text3);font-size:12px">${list.length}/${products.length}</span><span style="color:var(--green);font-size:12px;margin-left:10px" title="Valeur du stock affiché (qté × coût)"><i class="ti ti-cash" style="font-size:13px"></i> ${fmtCAD(dispVal)}</span></div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="filter-pills">
           <div class="pill ${filterStatus==='all'?'active':''}"     onclick="setFilt('all',this)">Tous (${products.length})</div>
@@ -522,7 +523,7 @@ function vProducts(c) {
       <div class="pill ${filterCat==='all'?'active':''}" onclick="setCatFilt('all',this)">Toutes</div>
       ${categories.map(cat=>`<div class="pill ${filterCat==cat.id?'active':''}" onclick="setCatFilt(${cat.id},this)">${escHtml(cat.name)} <span style="opacity:.6">(${products.filter(p=>p.category_id===cat.id).length})</span></div>`).join('')}
     </div>
-    <table><thead><tr><th>Produit</th><th>Référence</th><th>Code-barres</th><th>Catégorie</th><th>Qté dispo</th><th>Prix vente</th><th>Coût</th><th>Statut</th></tr></thead>
+    <table><thead><tr><th>Produit</th><th>Référence</th><th>Code-barres</th><th>Catégorie</th><th>Qté dispo</th><th>Prix vente</th><th>Coût</th><th>Valeur</th><th>Statut</th></tr></thead>
     <tbody>${list.length?list.map(p=>{
       const qty=getQty(p.id), s=getStatus(qty, p.id);
       const cat=categories.find(c=>c.id===p.category_id);
@@ -534,9 +535,10 @@ function vProducts(c) {
         <td style="font-family:var(--font-mono);font-weight:600;color:var(--${s.color==='green'?'green':s.color==='amber'?'amber':'red'})">${Math.round(qty)}</td>
         <td style="font-family:var(--font-mono)">${fmtCAD(p.sale_price)}</td>
         <td style="font-family:var(--font-mono)">${fmtCAD(p.cost_price)}</td>
+        <td style="font-family:var(--font-mono);color:var(--green)">${fmtCAD(qty*(p.cost_price||0))}</td>
         <td><span class="badge badge-${s.color}">${s.label}</span></td>
       </tr>`;
-    }).join(''):'<tr><td colspan="8" class="empty"><i class="ti ti-search" style="display:block;font-size:32px;opacity:.3;margin-bottom:8px"></i>Aucun produit</td></tr>'}
+    }).join(''):'<tr><td colspan="9" class="empty"><i class="ti ti-search" style="display:block;font-size:32px;opacity:.3;margin-bottom:8px"></i>Aucun produit</td></tr>'}
     </tbody></table></div>`;
 }
 function setFilt(f,el){filterStatus=f;document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');vProducts(document.getElementById('main-content'));}
@@ -1365,6 +1367,7 @@ async function showProd(id) {
         <div class="detail-cell"><div class="detail-cell-label">Statut</div><div class="detail-cell-value"><span class="badge badge-${s.color}">${s.label}</span></div></div>
         <div class="detail-cell"><div class="detail-cell-label">Prix vente</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.sale_price)}</div></div>
         <div class="detail-cell"><div class="detail-cell-label">Coût</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.cost_price)}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Valeur du stock</div><div class="detail-cell-value" style="font-family:var(--font-mono);color:var(--green)">${fmtCAD(qty*(p.cost_price||0))}</div></div>
       </div>
 
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
@@ -3712,18 +3715,150 @@ function toast(msg,type='info') {
   w.appendChild(t); setTimeout(()=>t.remove(),4000);
 }
 
+// ══ EXPORTS CSV ═══════════════════════════════════════════
+function downloadCSV(rows, filename){
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  // BOM \ufeff pour que les accents s'affichent correctement dans Excel
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent('\ufeff'+csv);
+  a.download=filename; a.click();
+}
+
+// Modal d'export du rapport inventaire (état actuel OU mouvements par période)
+function openInventoryExport(){
+  const today=new Date().toISOString().slice(0,10);
+  const monthAgo=new Date(Date.now()-30*864e5).toISOString().slice(0,10);
+  openModal('Exporter un rapport', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-camera" style="color:var(--blue);margin-right:6px"></i>État actuel du stock</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Photo instantanée : chaque produit avec sa quantité, son coût et sa valeur de stock actuels.</div>
+        <button class="btn btn-primary" onclick="exportCSV()"><i class="ti ti-download"></i> Exporter l'état actuel</button>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px">
+        <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-calendar-stats" style="color:var(--green);margin-right:6px"></i>Mouvements sur une période</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Toutes les réceptions, réductions et transferts entre deux dates.</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">De</label><input id="exp-from" type="date" class="form-input" value="${monthAgo}"></div>
+          <div class="form-group"><label class="form-label">Au</label><input id="exp-to" type="date" class="form-input" value="${today}"></div>
+        </div>
+        <button class="btn btn-primary" onclick="exportMovementsRange()"><i class="ti ti-download"></i> Exporter la période</button>
+      </div>
+    </div>
+  `, [{label:'Fermer',cls:'',action:'closeModal()'}]);
+}
+
 function exportCSV() {
   if(!products.length){toast('Aucun produit','error');return;}
-  const rows=[['Nom','Référence','Code-barres','Catégorie','Qté','Prix vente','Coût','Statut']];
+  const rows=[['Nom','Référence','Code-barres','Catégorie','Qté','Coût unitaire','Valeur du stock','Prix vente','Statut']];
   products.forEach(p=>{
     const cat=categories.find(c=>c.id===p.category_id);
     const qty=getQty(p.id);
-    rows.push([p.name,p.reference||'',p.barcode||'',cat?.name||'',Math.round(qty),p.sale_price||0,p.cost_price||0,getStatus(qty, p.id).label]);
+    rows.push([p.name,p.reference||'',p.barcode||'',cat?.name||'',Math.round(qty),(p.cost_price||0),(qty*(p.cost_price||0)).toFixed(2),(p.sale_price||0),getStatus(qty, p.id).label]);
   });
-  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download='inventaire_goplex.csv'; a.click();
+  downloadCSV(rows,'inventaire_goplex.csv');
+  closeModal();
+  toast('✓ Inventaire exporté','success');
+}
+
+async function exportMovementsRange(){
+  const from=document.getElementById('exp-from')?.value;
+  const to=document.getElementById('exp-to')?.value;
+  if(!from||!to){toast('Choisis les deux dates','error');return;}
+  if(from>to){toast('La date « De » doit précéder « Au »','error');return;}
+  toast('Génération du rapport…','info');
+  const toEnd=new Date(to+'T23:59:59.999');
+  const {data,error}=await sb.from('movements').select('*')
+    .gte('created_at', from+'T00:00:00')
+    .lte('created_at', toEnd.toISOString())
+    .order('created_at',{ascending:true}).limit(10000);
+  if(error){toast('Erreur: '+error.message,'error');return;}
+  const typeFR={receive:'Réception',reduce:'Réduction',transfer:'Transfert',inventory:'Inventaire',import:'Import'};
+  const pName=id=>products.find(p=>p.id===id)?.name||('Produit #'+id);
+  const lName=id=>id?(locations.find(l=>l.id===id)?.name||('Empl. #'+id)):'';
+  const rows=[['Date','Produit','Type','Quantité','Emplacement source','Emplacement destination','Référence','Note','Utilisateur']];
+  (data||[]).forEach(m=>{
+    rows.push([
+      new Date(m.created_at).toLocaleString('fr-CA'),
+      pName(m.product_id),
+      typeFR[m.movement_type]||m.movement_type||'',
+      m.quantity,
+      lName(m.location_from),
+      lName(m.location_to),
+      m.reference||'',
+      m.notes||'',
+      m.user_email||''
+    ]);
+  });
+  if(rows.length===1){toast('Aucun mouvement dans cette période','info');return;}
+  downloadCSV(rows,`mouvements_${from}_au_${to}.csv`);
+  closeModal();
+  toast(`✓ ${rows.length-1} mouvement(s) exporté(s)`,'success');
+}
+
+// ══ ONGLET FINANCIER — valeur du stock par catégorie ═══════
+function _financeAgg(){
+  const agg={}; let grand=0, grandQty=0;
+  products.forEach(p=>{
+    const qty=getQty(p.id);
+    const val=qty*(p.cost_price||0);
+    const key=p.category_id||'none';
+    if(!agg[key]) agg[key]={name:(categories.find(c=>c.id===p.category_id)?.name)||'Sans catégorie', count:0, value:0, qty:0};
+    agg[key].count++; agg[key].value+=val; agg[key].qty+=qty;
+    grand+=val; grandQty+=qty;
+  });
+  return {rows:Object.values(agg).sort((a,b)=>b.value-a.value), grand, grandQty};
+}
+
+function vFinance(c){
+  c=c||document.getElementById('main-content');
+  const {rows,grand,grandQty}=_financeAgg();
+  const kpi=(label,val,col)=>`<div style="background:var(--bg1);border:1px solid var(--border);border-radius:12px;padding:18px">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:6px">${label}</div>
+    <div style="font-size:24px;font-weight:800;font-family:var(--font-mono);color:var(--${col||'text1'})">${val}</div></div>`;
+  c.innerHTML=`
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+    ${kpi('Valeur totale du stock', fmtCAD(grand), 'green')}
+    ${kpi('Unités en stock', Math.round(grandQty), 'text1')}
+    ${kpi('Catégories', rows.length, 'blue')}
+  </div>
+  <div class="table-card">
+    <div class="table-toolbar">
+      <div class="table-toolbar-title"><i class="ti ti-coin" style="color:var(--green);margin-right:8px"></i>Valeur du stock par catégorie</div>
+      <button class="btn" onclick="exportFinanceCSV()"><i class="ti ti-download"></i> Exporter</button>
+    </div>
+    <table>
+      <thead><tr><th>Catégorie</th><th style="text-align:center">Produits</th><th style="text-align:center">Unités</th><th style="text-align:right">Valeur du stock</th><th style="text-align:right">% du total</th></tr></thead>
+      <tbody>
+        ${rows.length?rows.map(r=>`<tr>
+          <td style="font-weight:500">${escHtml(r.name)}</td>
+          <td style="text-align:center;font-family:var(--font-mono);color:var(--text2)">${r.count}</td>
+          <td style="text-align:center;font-family:var(--font-mono);color:var(--text2)">${Math.round(r.qty)}</td>
+          <td style="text-align:right;font-family:var(--font-mono);font-weight:600">${fmtCAD(r.value)}</td>
+          <td style="text-align:right;font-family:var(--font-mono);color:var(--text3)">${grand>0?((r.value/grand)*100).toFixed(1):'0.0'} %</td>
+        </tr>`).join(''):'<tr><td colspan="5" class="empty">Aucune donnée</td></tr>'}
+      </tbody>
+      <tfoot><tr style="border-top:2px solid var(--border2);font-weight:700;background:var(--bg2)">
+        <td>Total</td>
+        <td style="text-align:center;font-family:var(--font-mono)">${products.length}</td>
+        <td style="text-align:center;font-family:var(--font-mono)">${Math.round(grandQty)}</td>
+        <td style="text-align:right;font-family:var(--font-mono);color:var(--green)">${fmtCAD(grand)}</td>
+        <td style="text-align:right;font-family:var(--font-mono)">100 %</td>
+      </tr></tfoot>
+    </table>
+    <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
+      Valeur = quantité en stock × coût unitaire. Les produits sans coût défini comptent pour 0 $.
+    </div>
+  </div>`;
+}
+
+function exportFinanceCSV(){
+  const {rows,grand,grandQty}=_financeAgg();
+  const out=[['Catégorie','Produits','Unités','Valeur du stock (CAD)','% du total']];
+  rows.forEach(r=>out.push([r.name, r.count, Math.round(r.qty), r.value.toFixed(2), (grand>0?((r.value/grand)*100).toFixed(1):'0.0')]));
+  out.push(['TOTAL', products.length, Math.round(grandQty), grand.toFixed(2), '100']);
+  downloadCSV(out,'valeur_stock_par_categorie.csv');
+  toast('✓ Rapport financier exporté','success');
 }
 
 // ══ ÉTIQUETTES DYMO 30330 (2" x 3/4") ════════════════════════
