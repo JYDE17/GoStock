@@ -222,7 +222,7 @@ function nav(view, el) {
     locations:'Emplacements',movements:'Mouvements',receive:'Réceptionner',
     transfer:'Transfert',reduce:'Réduire stock',inventory:'Faire inventaire',
     create:'Créer article',users:'Utilisateurs',
-    pendinginv:'Inventaires à valider',pendingwd:'Retraits à approuver',forecast:'Prévisions de rupture',
+    pendinginv:'Confirmation d\'inventaire',pendingwd:'Confirmation de retrait',forecast:'Prévisions de rupture',
     finance:'Financier',settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
@@ -826,6 +826,7 @@ async function submitTransfer() {
 }
 
 function vReduce(c) {
+  const canConfirm = profile?.role==='admin' || profile?.role==='manager';
   c.innerHTML=`<div style="max-width:600px"><div class="table-card" style="padding:24px">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
       <div style="width:44px;height:44px;background:var(--red-dim);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--red)"><i class="ti ti-minus-vertical"></i></div>
@@ -875,7 +876,17 @@ function vReduce(c) {
       <button class="btn" onclick="vReduce(document.getElementById('main-content'))">Annuler</button>
       <button class="btn btn-danger" onclick="submitReduce()"><i class="ti ti-minus"></i> Valider</button>
     </div>
-  </div></div>`;
+  </div></div>${canConfirm?'<div id="reduce-confirm" style="margin-top:24px;max-width:980px"><div class="empty" style="padding:30px"><i class="ti ti-loader spin"></i></div></div>':''}`;
+  if(canConfirm) renderReduceConfirm();
+}
+async function renderReduceConfirm(){
+  await loadPendingWithdrawals();
+  const el=document.getElementById('reduce-confirm'); if(!el) return;
+  el.innerHTML = `
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);font-weight:600;margin:0 2px 12px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-checks" style="color:var(--green);font-size:15px"></i> Confirmations de retrait en attente
+      ${pendingWithdrawals.length?`<span class="badge badge-amber">${pendingWithdrawals.length}</span>`:''}
+    </div>` + pendingWithdrawalsListHTML();
 }
 function updateRedInfo(){const pid=parseInt(document.getElementById('red-product').value);const box=document.getElementById('red-info');if(pid){box.style.display='';document.getElementById('red-cur').textContent=Math.round(getQty(pid));_defaultLocFor(pid,'red-loc');}else box.style.display='none';}
 async function submitReduce() {
@@ -907,6 +918,7 @@ function vInventory(c) {
 
   // ── Desktop : étape 1 — choisir l'emplacement ─────────────
   const internalLocs = locations.filter(l=>l.usage==='internal');
+  const canConfirm = profile?.role==='admin' || profile?.role==='manager';
 
   c.innerHTML = `
   <div style="max-width:700px">
@@ -942,7 +954,17 @@ function vInventory(c) {
         </div>`;
       }).join('') : '<div class="empty">Aucun emplacement interne</div>'}
     </div>
-  </div>`;
+  </div>${canConfirm?'<div id="inv-confirm" style="margin-top:24px;max-width:980px"><div class="empty" style="padding:30px"><i class="ti ti-loader spin"></i></div></div>':''}`;
+  if(canConfirm) renderInvConfirm();
+}
+async function renderInvConfirm(){
+  await loadPendingInventories();
+  const el=document.getElementById('inv-confirm'); if(!el) return;
+  el.innerHTML = `
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);font-weight:600;margin:0 2px 12px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-checks" style="color:var(--green);font-size:15px"></i> Confirmations d'inventaire en attente
+      ${pendingInventories.length?`<span class="badge badge-amber">${pendingInventories.length}</span>`:''}
+    </div>` + pendingInventoriesListHTML();
 }
 
 // ── Desktop étape 2 : saisie inventaire pour un emplacement ──
@@ -2974,26 +2996,10 @@ async function submitPendingInventory(invMap, locId, locName) {
 }
 
 // Vue de validation des inventaires en attente
-async function vPendingInventories(c) {
-  c = c || document.getElementById('main-content');
-  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
-  await loadPendingInventories();
+function pendingInventoriesListHTML(){
   const all = pendingInventories;
-
-  if(!all.length) {
-    c.innerHTML = `<div class="empty">
-      <i class="ti ti-clipboard-check" style="display:block;font-size:48px;opacity:.3;margin-bottom:12px;color:var(--green)"></i>
-      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Aucun inventaire en attente</div>
-      <div style="font-size:13px;color:var(--text3)">Les inventaires soumis par l'équipe Opération apparaîtront ici</div>
-    </div>`;
-    return;
-  }
-
-  c.innerHTML = `
-  <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
-    <div style="font-size:14px;font-weight:600">${all.length} inventaire${all.length>1?'s':''} en attente de validation</div>
-  </div>
-  ${all.map(inv => {
+  if(!all.length) return `<div style="background:var(--bg2);border:1px dashed var(--border2);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--text3)"><i class="ti ti-checks" style="color:var(--green);margin-right:6px"></i>Aucun inventaire en attente de confirmation</div>`;
+  return all.map(inv => {
     const items = typeof inv.items==='string' ? JSON.parse(inv.items) : (inv.items||[]);
     const hasChanges = items.filter(i=>i.diff!==0);
     return `<div class="table-card" style="margin-bottom:16px">
@@ -3033,7 +3039,13 @@ async function vPendingInventories(c) {
         </tbody>
       </table>
     </div>`;
-  }).join('')}`;
+  }).join('');
+}
+async function vPendingInventories(c) {
+  c = c || document.getElementById('main-content');
+  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
+  await loadPendingInventories();
+  c.innerHTML = `<div style="margin-bottom:16px;font-size:14px;font-weight:600">${pendingInventories.length} inventaire${pendingInventories.length>1?'s':''} en attente de validation</div>` + pendingInventoriesListHTML();
 }
 
 async function approveInventory(invId) {
@@ -3074,8 +3086,7 @@ async function approveInventory(invId) {
   await logAction('inventory',{notes:`${updates} ajustements approuvés (emplacement: ${inv.location_name})`});
   toast(`✓ Inventaire approuvé — ${updates} ajustement${updates>1?'s':''}`, 'success');
   await loadAll();
-  await loadPendingInventories();
-  vPendingInventories(document.getElementById('main-content'));
+  renderView(currentView);
 }
 
 async function rejectInventory(invId) {
@@ -3108,7 +3119,7 @@ async function submitRejectInventory(invId) {
   toast('Inventaire rejeté','info');
   closeModal();
   await loadPendingInventories();
-  vPendingInventories(document.getElementById('main-content'));
+  renderView(currentView);
 }
 
 
@@ -3127,25 +3138,11 @@ function updateWithdrawBadge() {
   if(badge){ badge.textContent=cnt; badge.classList.toggle('hidden', cnt===0); }
 }
 
-async function vPendingWithdrawals(c) {
-  c = c || document.getElementById('main-content');
-  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
-  await loadPendingWithdrawals();
+function pendingWithdrawalsListHTML(){
   const all = pendingWithdrawals;
   const internalLocs = locations.filter(l=>l.usage==='internal');
-
-  if(!all.length) {
-    c.innerHTML = `<div class="empty">
-      <i class="ti ti-package-export" style="display:block;font-size:48px;opacity:.3;margin-bottom:12px;color:var(--green)"></i>
-      <div style="font-size:16px;font-weight:600;margin-bottom:6px">Aucun retrait en attente</div>
-      <div style="font-size:13px;color:var(--text3)">Les retraits soumis par les employés apparaîtront ici</div>
-    </div>`;
-    return;
-  }
-
-  c.innerHTML = `
-  <div style="margin-bottom:16px;font-size:14px;font-weight:600">${all.length} retrait${all.length>1?'s':''} en attente d'approbation</div>
-  ${all.map(wd => {
+  if(!all.length) return `<div style="background:var(--bg2);border:1px dashed var(--border2);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--text3)"><i class="ti ti-checks" style="color:var(--green);margin-right:6px"></i>Aucun retrait en attente de confirmation</div>`;
+  return all.map(wd => {
     const items = typeof wd.items==='string' ? JSON.parse(wd.items) : (wd.items||[]);
     let defLoc = internalLocs[0]?.id;
     const first = items[0];
@@ -3189,7 +3186,13 @@ async function vPendingWithdrawals(c) {
         </tbody>
       </table>
     </div>`;
-  }).join('')}`;
+  }).join('');
+}
+async function vPendingWithdrawals(c) {
+  c = c || document.getElementById('main-content');
+  c.innerHTML = '<div class="empty"><i class="ti ti-loader spin"></i></div>';
+  await loadPendingWithdrawals();
+  c.innerHTML = `<div style="margin-bottom:16px;font-size:14px;font-weight:600">${pendingWithdrawals.length} retrait${pendingWithdrawals.length>1?'s':''} en attente d'approbation</div>` + pendingWithdrawalsListHTML();
 }
 
 async function approveWithdrawal(wdId) {
@@ -3228,8 +3231,7 @@ async function approveWithdrawal(wdId) {
   await logAction('reduce',{notes:`Retrait approuvé (${wd.username}) — ${done} produit(s) @ ${locName}`});
   toast(`✓ Retrait approuvé — ${done} produit${done>1?'s':''} retiré${done>1?'s':''}`,'success');
   await loadAll();
-  await loadPendingWithdrawals();
-  vPendingWithdrawals(document.getElementById('main-content'));
+  renderView(currentView);
 }
 
 function rejectWithdrawal(wdId) {
@@ -3255,7 +3257,7 @@ async function submitRejectWithdrawal(wdId) {
   toast('Retrait rejeté','info');
   closeModal();
   await loadPendingWithdrawals();
-  vPendingWithdrawals(document.getElementById('main-content'));
+  renderView(currentView);
 }
 
 // ══ KIOSQUE EMPLOYÉ — retrait sans authentification ═════════

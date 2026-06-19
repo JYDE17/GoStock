@@ -349,6 +349,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <div class="nav-group-items">
       <div class="nav-item active" onclick="nav('dashboard',this)"><i class="ti ti-layout-dashboard"></i>Vue d'ensemble</div>
       <div class="nav-item" onclick="nav('alerts',this)"><i class="ti ti-bell"></i>Alertes<span class="nav-badge hidden" id="alert-badge">0</span></div>
+      <div class="nav-item" onclick="nav('forecast',this)"><i class="ti ti-chart-line"></i>Prévisions</div>
     </div>
   </div>
 
@@ -366,44 +367,28 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <div class="nav-group-items">
       <div class="nav-item" onclick="nav('receive',this)"><i class="ti ti-truck-delivery"></i>Réceptionner</div>
       <div class="nav-item" onclick="nav('transfer',this)"><i class="ti ti-transfer"></i>Transfert</div>
-      <div class="nav-item" onclick="nav('reduce',this)"><i class="ti ti-minus-vertical"></i>Réduire stock</div>
-      <div class="nav-item" onclick="nav('inventory',this)"><i class="ti ti-clipboard-list"></i>Faire inventaire</div>
-    </div>
-  </div>
-
-  <div class="nav-group" id="admin-nav" style="display:none">
-    <div class="nav-label" onclick="toggleNavGroup(this)">Administration<i class="ti ti-chevron-down nav-chevron"></i></div>
-    <div class="nav-group-items">
-      <div class="nav-item" id="nav-pending-inv" style="display:none" onclick="nav('pendinginv',this)">
-        <i class="ti ti-clipboard-check"></i>Inventaires
-        <span class="nav-badge hidden" id="pending-inv-badge">0</span>
-      </div>
-      <div class="nav-item" id="nav-pending-wd" style="display:none" onclick="nav('pendingwd',this)">
-        <i class="ti ti-package-export"></i>Retraits
-        <span class="nav-badge hidden" id="pending-wd-badge">0</span>
-      </div>
-      <div class="nav-item" onclick="nav('users',this)"><i class="ti ti-users"></i>Utilisateurs</div>
-      <div class="nav-item" onclick="nav('settings',this)"><i class="ti ti-settings"></i>Paramètres</div>
-      <div class="nav-item" onclick="nav('auditlog',this)"><i class="ti ti-list-check"></i>Journal d'audit</div>
+      <div class="nav-item" onclick="nav('reduce',this)"><i class="ti ti-minus-vertical"></i>Réduire stock<span class="nav-badge hidden" id="pending-wd-badge">0</span></div>
+      <div class="nav-item" onclick="nav('inventory',this)"><i class="ti ti-clipboard-list"></i>Faire inventaire<span class="nav-badge hidden" id="pending-inv-badge">0</span></div>
     </div>
   </div>
 
   <div class="nav-group">
     <div class="nav-label" onclick="toggleNavGroup(this)">Rapports<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
-      <div class="nav-item" onclick="nav('forecast',this)"><i class="ti ti-chart-line"></i>Prévisions</div>
       <div class="nav-item" onclick="nav('finance',this)"><i class="ti ti-coin"></i>Financier</div>
       <div class="nav-item" onclick="openExportModal()"><i class="ti ti-shopping-cart"></i>Lot d'achat</div>
       <div class="nav-item" onclick="openInventoryExport()"><i class="ti ti-download"></i>Inventaire CSV</div>
     </div>
   </div>
 
-  <div class="nav-group">
-    <div class="nav-label" onclick="toggleNavGroup(this)">Outils<i class="ti ti-chevron-down nav-chevron"></i></div>
+  <div class="nav-group" id="admin-nav" style="display:none">
+    <div class="nav-label" onclick="toggleNavGroup(this)">Admin<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
-      <div class="nav-item" onclick="openBarcodeScanner('general')"><i class="ti ti-barcode"></i>Scanner</div>
+      <div class="nav-item" onclick="nav('users',this)"><i class="ti ti-users"></i>Utilisateurs</div>
+      <div class="nav-item" onclick="nav('settings',this)"><i class="ti ti-settings"></i>Paramètres</div>
     </div>
   </div>
+
 </nav>
 
 <div class="main">
@@ -413,7 +398,6 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <div class="search-wrap"><i class="ti ti-search"></i><input id="global-search" placeholder="Rechercher…" oninput="onSearch()"></div>
     <button class="btn" id="mob-refresh" onclick="loadAll()" title="Actualiser"><i class="ti ti-refresh" id="refresh-icon"></i></button>
     <button class="btn" onclick="loadAll()" style="display:none" id="desk-refresh"><i class="ti ti-refresh"></i> Actualiser</button>
-    <button class="bc-btn" onclick="openBarcodeScanner('general')"><i class="ti ti-barcode"></i> Scanner</button>
     <div style="position:relative" id="user-wrap">
       <div class="user-menu-btn" onclick="toggleUserMenu()">
         <div class="user-avatar" id="u-avatar">?</div>
@@ -428,7 +412,6 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
         </div>
         <div class="user-dropdown-item" id="dd-admin" style="display:none" onclick="nav('users');toggleUserMenu()"><i class="ti ti-users"></i>Utilisateurs</div>
         <div class="user-dropdown-item" id="dd-migrate" style="display:none" onclick="nav('settings');toggleUserMenu()"><i class="ti ti-settings"></i>Paramètres</div>
-        <div class="user-dropdown-item" onclick="nav('auditlog');toggleUserMenu()"><i class="ti ti-list-check"></i>Journal d'audit</div>
         <div class="user-dropdown-item" onclick="doSignOut()" style="color:var(--red)"><i class="ti ti-logout"></i>Se déconnecter</div>
       </div>
     </div>
