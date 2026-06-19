@@ -1,6 +1,6 @@
 {
-  "name": "GoPlex Inventaire",
-  "short_name": "GoPlex",
+  "name": "GoStock",
+  "short_name": "GoStock",
   "description": "Gestion d'inventaire GoPlex — produits, emplacements, scanner, lots d'achat.",
   "start_url": "./",
   "scope": "./",
