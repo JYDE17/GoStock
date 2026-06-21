@@ -224,7 +224,7 @@ function nav(view, el) {
     transfer:'Transfert',reduce:'Réduire stock',inventory:'Faire inventaire',
     create:'Créer article',users:'Utilisateurs',
     pendinginv:'Confirmation d\'inventaire',pendingwd:'Confirmation de retrait',forecast:'Prévisions de rupture',
-    finance:'Financier',settings:'Paramètres',auditlog:'Journal d\'audit'};
+    finance:'Financier',recvreport:'Rapport de réceptions',settings:'Paramètres',auditlog:'Journal d\'audit'};
   document.getElementById('topbar-title').textContent = titles[view]||view;
   renderView(view);
   syncMobTabs(view);
@@ -253,7 +253,7 @@ function renderView(v) {
   const map={dashboard:vDashboard,alerts:vAlerts,products:vProducts,
     locations:vLocations,movements:vMovements,receive:vReceive,
     transfer:vTransfer,reduce:vReduce,inventory:vInventory,
-    create:vCreate,users:vUsers,pendinginv:vPendingInventories,pendingwd:vPendingWithdrawals,forecast:vForecast,finance:vFinance,settings:vSettings,auditlog:vAuditLog};
+    create:vCreate,users:vUsers,pendinginv:vPendingInventories,pendingwd:vPendingWithdrawals,forecast:vForecast,finance:vFinance,recvreport:vRecvReport,settings:vSettings,auditlog:vAuditLog};
   (map[v]||vDashboard)(c);
 }
 function onSearch() {
@@ -854,6 +854,79 @@ async function showReception(id){
         <span>Total avant taxes</span><span style="font-family:var(--font-mono);color:var(--green)">${fmtCAD(rec.total_amount)}</span>
       </div>`);
   }catch(err){toast('Erreur: '+err.message,'error');}
+}
+
+function vRecvReport(c){
+  c=c||document.getElementById('main-content');
+  const today=new Date().toISOString().slice(0,10);
+  const first=new Date(); first.setDate(1);
+  const firstStr=first.toISOString().slice(0,10);
+  c.innerHTML=`<div style="max-width:900px;margin:0 auto">
+    <div class="table-card" style="padding:20px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="width:44px;height:44px;background:var(--green-dim);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
+        <div><div style="font-size:16px;font-weight:600">Rapport de réceptions</div><div style="font-size:12px;color:var(--text3)">Filtrer par période et fournisseur</div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Du</label><input id="rr-from" type="date" class="form-input" value="${firstStr}"></div>
+        <div class="form-group"><label class="form-label">Au</label><input id="rr-to" type="date" class="form-input" value="${today}"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Fournisseur</label>
+        <select id="rr-supplier" class="form-input">
+          <option value="">Tous les fournisseurs</option>
+          ${suppliers.map(s=>`<option value="${s.id}">${escHtml(s.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn btn-primary" onclick="runRecvReport()"><i class="ti ti-search"></i> Générer</button>
+      </div>
+    </div>
+    <div id="rr-results"></div>
+  </div>`;
+  runRecvReport();
+}
+async function runRecvReport(){
+  const from=document.getElementById('rr-from').value;
+  const to=document.getElementById('rr-to').value;
+  const supId=document.getElementById('rr-supplier').value;
+  const box=document.getElementById('rr-results'); if(!box)return;
+  box.innerHTML=`<div class="table-card" style="padding:20px;color:var(--text3)">Chargement…</div>`;
+  try{
+    let q=sb.from('receptions').select('*').order('received_date',{ascending:false});
+    if(from)q=q.gte('received_date',from);
+    if(to)q=q.lte('received_date',to);
+    if(supId)q=q.eq('supplier_id',parseInt(supId));
+    const {data,error}=await q;
+    if(error)throw error;
+    if(!data||!data.length){box.innerHTML=`<div class="table-card" style="padding:24px;text-align:center;color:var(--text3)">Aucune réception sur cette période.</div>`;return;}
+    const total=data.reduce((s,r)=>s+(r.total_amount||0),0);
+    const rows=data.map(r=>{
+      const sup=suppliers.find(s=>s.id===r.supplier_id);
+      return `<tr onclick="showReception(${r.id})" style="cursor:pointer">
+        <td style="font-family:var(--font-mono);font-size:12px">${r.received_date||'—'}</td>
+        <td>${escHtml(sup?.name||'—')}</td>
+        <td style="font-family:var(--font-mono);font-size:12px">${escHtml(r.invoice_number||'—')}</td>
+        <td style="text-align:right;font-family:var(--font-mono);color:var(--green)">${fmtCAD(r.total_amount)}</td>
+      </tr>`;
+    }).join('');
+    box.innerHTML=`<div class="table-card">
+      <div class="table-toolbar"><div class="table-toolbar-title">${data.length} réception${data.length>1?'s':''}</div>
+        <button class="btn" onclick="exportRecvReport()"><i class="ti ti-download"></i> CSV</button></div>
+      <table style="width:100%"><thead><tr><th>Date</th><th>Fournisseur</th><th>N° facture</th><th style="text-align:right">Total avant taxes</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--border)"><td colspan="3" style="text-align:right;font-weight:700;padding:12px 8px">TOTAL</td><td style="text-align:right;font-family:var(--font-mono);font-weight:700;color:var(--green);padding:12px 8px">${fmtCAD(total)}</td></tr></tfoot>
+      </table></div>`;
+    window._rrData=data;
+  }catch(err){box.innerHTML=`<div class="table-card" style="padding:20px;color:var(--red)">Erreur: ${escHtml(err.message)}</div>`;}
+}
+function exportRecvReport(){
+  const data=window._rrData||[];
+  if(!data.length){toast('Rien à exporter','error');return;}
+  const out=[['Date','Fournisseur','N° facture','Total avant taxes']];
+  data.forEach(r=>{const sup=suppliers.find(s=>s.id===r.supplier_id);out.push([r.received_date||'',sup?.name||'',r.invoice_number||'',(r.total_amount||0).toFixed(2)]);});
+  const csv=out.map(row=>row.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rapport_receptions.csv';a.click();
 }
 function vTransfer(c) {
   const internalLocs=locations.filter(l=>l.usage==='internal');
@@ -1475,6 +1548,25 @@ async function showProd(id) {
     .select('*').eq('product_id', id)
     .order('created_at', {ascending: false}).limit(50);
 
+  // Réceptions de ce produit (fournisseur + coût) — affiché web seulement
+  const { data: recvRows } = await sb.from('reception_items')
+    .select('quantity,unit_cost,receptions(received_date,supplier_id,invoice_number)')
+    .eq('product_id', id).order('id',{ascending:false}).limit(50);
+  const recvHistHtml = (recvRows&&recvRows.length) ? `
+    <div class="web-only" style="margin-bottom:18px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Réceptions — fournisseur &amp; coût</div>
+      <div style="overflow-x:auto"><table style="width:100%">
+        <thead><tr><th>Date</th><th>Fournisseur</th><th>Facture</th><th style="text-align:center">Qté</th><th style="text-align:right">Coût/u</th></tr></thead>
+        <tbody>${recvRows.map(r=>{const rc=r.receptions||{};const sup=suppliers.find(s=>s.id===rc.supplier_id);return `<tr>
+          <td style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${rc.received_date||'—'}</td>
+          <td style="font-size:12px">${escHtml(sup?.name||'—')}</td>
+          <td style="font-size:11px;color:var(--text3);font-family:var(--font-mono)">${escHtml(rc.invoice_number||'—')}</td>
+          <td style="text-align:center;font-family:var(--font-mono)">${Math.round(r.quantity)}</td>
+          <td style="text-align:right;font-family:var(--font-mono);color:var(--green)">${fmtCAD(r.unit_cost)}</td>
+        </tr>`;}).join('')}</tbody>
+      </table></div>
+    </div>` : '';
+
   const cols = {receive:'green', reduce:'red', transfer:'blue', inventory:'purple', import:'gray'};
   const typeLabels = {receive:'Réception', reduce:'Sortie', transfer:'Transfert', inventory:'Inventaire', import:'Import'};
 
@@ -1585,6 +1677,7 @@ async function showProd(id) {
 
     <!-- TAB HISTORIQUE -->
     <div id="prodtab-history" style="display:none">
+      ${recvHistHtml}
       <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
         <table style="min-width:500px">
           <thead><tr><th>Date</th><th>Type</th><th>Qté</th><th>Emplacement</th><th>Réf.</th><th>Par</th></tr></thead>
