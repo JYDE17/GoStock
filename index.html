@@ -146,6 +146,14 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
   .search-wrap input{font-size:13px}
   .content{padding:10px;overflow-x:hidden}
   .table-card{overflow:hidden}
+  /* Vue Produits sur mobile : garder Produit, Qté dispo, Statut */
+  .tbl-products th:nth-child(2),.tbl-products td:nth-child(2),
+  .tbl-products th:nth-child(3),.tbl-products td:nth-child(3),
+  .tbl-products th:nth-child(4),.tbl-products td:nth-child(4),
+  .tbl-products th:nth-child(6),.tbl-products td:nth-child(6),
+  .tbl-products th:nth-child(7),.tbl-products td:nth-child(7),
+  .tbl-products th:nth-child(8),.tbl-products td:nth-child(8){display:none}
+  .tbl-products td:first-child{max-width:0;width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   table{font-size:12px;width:100%}
   thead th{padding:7px 8px;font-size:10px;white-space:nowrap}
   td{padding:8px 8px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -429,13 +437,13 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 <!-- ══ MOBILE BOTTOM TAB BAR ════════════════════════════ -->
 <nav class="mobile-tabs" id="mobile-tabs">
   <button class="mob-tab active" id="mobtab-dashboard" onclick="mobNav('dashboard',this)">
-    <i class="ti ti-layout-dashboard"></i><span>Accueil</span>
+    <i class="ti ti-layout-dashboard"></i><span>Tableau</span>
   </button>
-  <button class="mob-tab" id="mobtab-products" onclick="mobNav('products',this)">
-    <i class="ti ti-package"></i><span>Produits</span>
+  <button class="mob-tab" id="mobtab-receive" onclick="mobNav('receive',this)">
+    <i class="ti ti-truck-delivery"></i><span>Réception</span>
   </button>
-  <button class="mob-tab" id="mobtab-scan" onclick="openBarcodeScanner('general')">
-    <i class="ti ti-barcode" style="font-size:26px;color:var(--blue)"></i><span>Scanner</span>
+  <button class="mob-tab" id="mobtab-reduce" onclick="mobNav('reduce',this)">
+    <i class="ti ti-circle-minus"></i><span>Réduire</span>
   </button>
   <button class="mob-tab" id="mobtab-inventory" onclick="mobNav('inventory',this)">
     <i class="ti ti-clipboard-list"></i><span>Inventaire</span>
@@ -453,16 +461,6 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <div style="width:36px;height:4px;background:var(--border2);border-radius:2px"></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin-bottom:1px">
-    <div onclick="closeMoreSheet();mobNav('receive')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
-      <div style="width:48px;height:48px;background:var(--green-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
-      <div style="font-size:14px;font-weight:600">Réceptionner</div>
-      <div style="font-size:11px;color:var(--text3)">Ajouter du stock</div>
-    </div>
-    <div onclick="closeMoreSheet();mobNav('reduce')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
-      <div style="width:48px;height:48px;background:var(--red-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--red)"><i class="ti ti-minus-vertical"></i></div>
-      <div style="font-size:14px;font-weight:600">Réduire stock</div>
-      <div style="font-size:11px;color:var(--text3)">Sortie, vente, perte</div>
-    </div>
     <div onclick="closeMoreSheet();mobNav('transfer')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
       <div style="width:48px;height:48px;background:var(--blue-bg);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--blue)"><i class="ti ti-transfer"></i></div>
       <div style="font-size:14px;font-weight:600">Transfert</div>
@@ -473,6 +471,10 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
       <div style="font-size:14px;font-weight:600">Créer article</div>
       <div style="font-size:11px;color:var(--text3)">Nouveau produit</div>
     </div>
+  </div>
+  <div class="more-item" onclick="closeMoreSheet();mobNav('products')">
+    <i class="ti ti-package" style="color:var(--accent)"></i>
+    <div><div class="more-item-label">Produits</div><div class="more-item-sub">Liste complète</div></div>
   </div>
   <div class="more-item" onclick="closeMoreSheet();mobNav('alerts')">
     <i class="ti ti-bell" style="color:var(--amber)"></i>

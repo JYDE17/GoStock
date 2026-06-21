@@ -14,6 +14,7 @@ let products = [], locations = [], categories = [], uoms = [], suppliers = [], m
 let stockMap = {};        // productId -> { total, byLocation: [{locId,qty}] }
 let currentView = 'dashboard', filterStatus = 'all', filterCat = 'all', searchQ = '';
 let bcFoundProduct = null, bcStream = null, bcInterval = null;
+let recvCart = [], bcCartMode = false;
 
 // ══════════════════════════════════════════════════════════
 // AUTH
@@ -523,7 +524,7 @@ function vProducts(c) {
       <div class="pill ${filterCat==='all'?'active':''}" onclick="setCatFilt('all',this)">Toutes</div>
       ${categories.map(cat=>`<div class="pill ${filterCat==cat.id?'active':''}" onclick="setCatFilt(${cat.id},this)">${escHtml(cat.name)} <span style="opacity:.6">(${products.filter(p=>p.category_id===cat.id).length})</span></div>`).join('')}
     </div>
-    <table><thead><tr><th>Produit</th><th>Référence</th><th>Code-barres</th><th>Catégorie</th><th>Qté dispo</th><th>Prix vente</th><th>Coût</th><th>Valeur</th><th>Statut</th></tr></thead>
+    <table class="tbl-products"><thead><tr><th>Produit</th><th>Référence</th><th>Code-barres</th><th>Catégorie</th><th>Qté dispo</th><th>Prix vente</th><th>Coût</th><th>Valeur</th><th>Statut</th></tr></thead>
     <tbody>${list.length?list.map(p=>{
       const qty=getQty(p.id), s=getStatus(qty, p.id);
       const cat=categories.find(c=>c.id===p.category_id);
@@ -632,89 +633,228 @@ function vMovements(c) {
 }
 
 function vReceive(c) {
-  const internalLocs=locations.filter(l=>l.usage==='internal');
-  c.innerHTML=`<div style="max-width:600px"><div class="table-card" style="padding:24px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-      <div style="width:44px;height:44px;background:var(--green-dim);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
-      <div><div style="font-size:16px;font-weight:600">Réception de marchandises</div><div style="font-size:12px;color:var(--text3)">Ajouter du stock à un emplacement</div></div>
+  c = c || document.getElementById('main-content');
+  const internalLocs = locations.filter(l=>l.usage==='internal');
+  const today = new Date().toISOString().slice(0,10);
+  c.innerHTML = `<div style="max-width:760px;margin:0 auto">
+    <div class="table-card" style="padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+        <div style="width:44px;height:44px;background:var(--green-dim);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--green)"><i class="ti ti-truck-delivery"></i></div>
+        <div><div style="font-size:16px;font-weight:600">Réception de marchandises</div><div style="font-size:12px;color:var(--text3)">Saisir une facture fournisseur et les produits reçus</div></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Fournisseur</label>
+          <select id="recv-supplier" class="form-input">
+            <option value="">-- Fournisseur --</option>
+            ${suppliers.map(s=>`<option value="${s.id}">${escHtml(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">N° de facture</label>
+          <input id="recv-invoice" type="text" class="form-input" placeholder="ex: F-10482" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Date de réception</label>
+          <input id="recv-date" type="date" class="form-input" value="${today}">
+        </div>
+        <div class="form-group"><label class="form-label">Emplacement destination *</label>
+          <select id="recv-loc" class="form-input">
+            <option value="">-- Emplacement --</option>
+            ${internalLocs.map(l=>`<option value="${l.id}">${escHtml(l.full_path||l.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin:6px 0 14px">
+        <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          <i class="ti ti-barcode" style="font-size:14px"></i> Ajouter un produit
+        </div>
+        <div style="display:flex;gap:8px">
+          <input id="recv-search" type="text" class="form-input" placeholder="Scanner ou taper code-barres / nom…" autocomplete="off"
+            oninput="recvSearchInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();recvSearchEnter();}">
+          <button class="btn btn-primary" onclick="recvOpenScanner()" style="flex-shrink:0" title="Scanner avec la caméra"><i class="ti ti-camera"></i></button>
+        </div>
+        <div id="recv-search-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+
+      <div id="recv-lines"></div>
+
+      <div id="recv-foot" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 4px 4px;border-top:1px solid var(--border);margin-top:6px">
+          <div style="font-size:13px;color:var(--text3)">Total avant taxes</div>
+          <div id="recv-grand-total" style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:var(--green)">${fmtCAD(0)}</div>
+        </div>
+        <div class="form-group" style="margin-top:10px"><label class="form-label">Note (optionnel)</label>
+          <input id="recv-note" type="text" class="form-input" placeholder="Remarque…">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+          <button class="btn" onclick="recvCart=[];vReceive()">Vider</button>
+          <button class="btn btn-success" onclick="submitReceive()"><i class="ti ti-check"></i> Valider la réception</button>
+        </div>
+      </div>
     </div>
 
-    <!-- Scanner physique / recherche universelle -->
-    <div style="background:var(--bg2);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin-bottom:18px">
-      <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-        <i class="ti ti-barcode" style="font-size:14px"></i> Scanner physique ou recherche
-      </div>
-      <div style="display:flex;gap:8px">
-        <input id="recv-scanner" type="text" class="form-input" placeholder="Scannez ou tapez un code-barres / nom…" autocomplete="off"
-          oninput="scanSearch('recv')" onkeydown="if(event.key==='Enter'){event.preventDefault();scanConfirm('recv');}">
-        <button class="btn btn-primary" onclick="scanConfirm('recv')" style="flex-shrink:0"><i class="ti ti-search"></i></button>
-      </div>
-      <div id="recv-scan-results" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+    <div class="table-card" style="margin-top:16px">
+      <div class="table-toolbar"><div class="table-toolbar-title">Réceptions récentes</div></div>
+      <div id="recv-history" style="padding:14px"><div style="color:var(--text3);font-size:13px">Chargement…</div></div>
     </div>
-
-    <div class="form-group">
-      <label class="form-label">Produit sélectionné *</label>
-      <select id="recv-product" class="form-input" onchange="updateRecvInfo()">
-        <option value="">-- Sélectionner --</option>
-        ${products.map(p=>`<option value="${p.id}">${escHtml(p.name)}${p.reference?' ['+p.reference+']':''}</option>`).join('')}
-      </select>
-    </div>
-    <div id="recv-info" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px">
-      Stock actuel : <strong id="recv-cur">—</strong>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Quantité *</label><input id="recv-qty" type="number" min="0" step="1" class="form-input" placeholder="0"></div>
-      <div class="form-group"><label class="form-label">Emplacement destination *</label>
-        <select id="recv-loc" class="form-input">
-          <option value="">-- Emplacement --</option>
-          ${internalLocs.map(l=>`<option value="${l.id}">${escHtml(l.full_path||l.name)}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-    <div class="form-group"><label class="form-label">Référence / BL</label><input id="recv-ref" type="text" class="form-input" placeholder="BL-2024-001"></div>
-    <div class="form-group"><label class="form-label">Notes</label><textarea id="recv-note" class="form-input" rows="2"></textarea></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn" onclick="vReceive(document.getElementById('main-content'))">Annuler</button>
-      <button class="btn btn-success" onclick="submitReceive()"><i class="ti ti-check"></i> Valider</button>
-    </div>
-  </div></div>`;
-  // Auto-focus scanner input
-  setTimeout(()=>document.getElementById('recv-scanner')?.focus(), 100);
+  </div>`;
+  recvRenderLines();
+  loadRecvHistory();
+  setTimeout(()=>document.getElementById('recv-search')?.focus(), 100);
 }
+
+function recvSearchInput(){
+  const q=(document.getElementById('recv-search').value||'').toLowerCase().trim();
+  const box=document.getElementById('recv-search-results'); if(!box)return;
+  if(!q){box.innerHTML='';return;}
+  const res=products.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.barcode||'').toLowerCase().includes(q)||(p.reference||'').toLowerCase().includes(q)).slice(0,6);
+  box.innerHTML=res.length?res.map(p=>`<div onclick="recvPick(${p.id})" style="padding:8px 10px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span style="font-size:13px">${escHtml(p.name)}${p.barcode?` <span class="mono" style="color:var(--text3);font-size:11px">${escHtml(p.barcode)}</span>`:''}</span>
+      <i class="ti ti-plus" style="color:var(--green)"></i>
+    </div>`).join(''):`<div style="color:var(--text3);font-size:12px;padding:4px">Aucun résultat</div>`;
+}
+function recvSearchEnter(){
+  const q=(document.getElementById('recv-search').value||'').toLowerCase().trim(); if(!q)return;
+  let p=products.find(x=>(x.barcode||'').toLowerCase()===q||(x.reference||'').toLowerCase()===q);
+  if(!p){const r=products.filter(x=>(x.name||'').toLowerCase().includes(q)||(x.barcode||'').toLowerCase().includes(q));if(r.length===1)p=r[0];else if(r.length>1){recvSearchInput();return;}}
+  if(p)recvPick(p.id); else toast('Produit introuvable','error');
+}
+function recvPick(pid){
+  recvAddProduct(pid);
+  const s=document.getElementById('recv-search'); if(s){s.value='';s.focus();}
+  const box=document.getElementById('recv-search-results'); if(box)box.innerHTML='';
+}
+function recvAddProduct(pid){
+  pid=parseInt(pid);
+  const p=products.find(x=>x.id===pid); if(!p)return;
+  const line=recvCart.find(l=>l.pid===pid);
+  if(line){line.qty+=1;} else recvCart.push({pid, qty:1, cost:(p.cost_price||0)});
+  recvRenderLines();
+}
+function recvRenderLines(){
+  const box=document.getElementById('recv-lines'); if(!box)return;
+  const foot=document.getElementById('recv-foot');
+  if(!recvCart.length){box.innerHTML=`<div style="text-align:center;color:var(--text3);font-size:13px;padding:20px 0"><i class="ti ti-package" style="display:block;font-size:28px;opacity:.3;margin-bottom:6px"></i>Aucun produit ajouté</div>`;if(foot)foot.style.display='none';return;}
+  if(foot)foot.style.display='';
+  box.innerHTML=recvCart.map((l,i)=>{
+    const p=products.find(x=>x.id===l.pid);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(p?.name||'—')}</div>
+        <div style="font-size:11px;color:var(--text3)">Stock actuel : ${Math.round(getQty(l.pid))}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center"><label style="font-size:9px;color:var(--text3);text-transform:uppercase">Qté</label>
+        <input type="number" min="0" step="1" value="${l.qty}" oninput="recvSetQty(${i},this.value)" class="form-input" style="width:62px;height:34px;text-align:center;padding:0 4px"></div>
+      <div style="display:flex;flex-direction:column;align-items:center"><label style="font-size:9px;color:var(--text3);text-transform:uppercase">Coût/u</label>
+        <input type="number" min="0" step="0.01" value="${l.cost}" oninput="recvSetCost(${i},this.value)" class="form-input" style="width:78px;height:34px;text-align:right;padding:0 6px"></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:66px"><label style="font-size:9px;color:var(--text3);text-transform:uppercase">Total</label>
+        <div id="recv-lt-${i}" style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--green)">${fmtCAD(l.qty*l.cost)}</div></div>
+      <button onclick="recvRemove(${i})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px"><i class="ti ti-x"></i></button>
+    </div>`;
+  }).join('');
+  recvUpdateTotal();
+}
+function recvSetQty(i,v){if(!recvCart[i])return;recvCart[i].qty=parseFloat(v)||0;const lt=document.getElementById('recv-lt-'+i);if(lt)lt.textContent=fmtCAD(recvCart[i].qty*recvCart[i].cost);recvUpdateTotal();}
+function recvSetCost(i,v){if(!recvCart[i])return;recvCart[i].cost=parseFloat(v)||0;const lt=document.getElementById('recv-lt-'+i);if(lt)lt.textContent=fmtCAD(recvCart[i].qty*recvCart[i].cost);recvUpdateTotal();}
+function recvRemove(i){recvCart.splice(i,1);recvRenderLines();}
+function recvUpdateTotal(){const t=recvCart.reduce((s,l)=>s+l.qty*l.cost,0);const e=document.getElementById('recv-grand-total');if(e)e.textContent=fmtCAD(t);}
+function recvOpenScanner(){bcCartMode=true;openBarcodeScanner('general');}
+
 function _defaultLocFor(pid, selId){
   const sel=document.getElementById(selId); if(!sel||!pid) return;
   const best=[...(stockMap[pid]?.byLocation||[])].sort((a,b)=>b.qty-a.qty)[0];
   if(best && best.locId && [...sel.options].some(o=>o.value===String(best.locId))) sel.value=String(best.locId);
 }
 function updateRecvInfo() {
-  const pid=parseInt(document.getElementById('recv-product').value);
+  const el=document.getElementById('recv-product'); if(!el)return;
+  const pid=parseInt(el.value);
   const p=products.find(x=>x.id===pid);
-  const box=document.getElementById('recv-info');
+  const box=document.getElementById('recv-info'); if(!box)return;
   if(p){box.style.display='';document.getElementById('recv-cur').textContent=`${Math.round(getQty(pid))}`;_defaultLocFor(pid,'recv-loc');}
   else{box.style.display='none';}
 }
-async function submitReceive() {
-  const pid=parseInt(document.getElementById('recv-product').value);
-  const qty=parseFloat(document.getElementById('recv-qty').value);
+
+async function submitReceive(){
+  const supId=document.getElementById('recv-supplier').value;
+  const invoice=document.getElementById('recv-invoice').value.trim();
+  const date=document.getElementById('recv-date').value;
   const locId=parseInt(document.getElementById('recv-loc').value);
-  const ref=document.getElementById('recv-ref').value.trim();
-  const note=document.getElementById('recv-note').value.trim();
-  if(!pid||!qty||qty<=0||!locId){toast('Remplissez tous les champs obligatoires','error');return;}
-  const p=products.find(x=>x.id===pid), l=locations.find(x=>x.id===locId);
-  try {
-    // Upsert stock
-    const existing=stockMap[pid]?.byLocation.find(b=>b.locId===locId);
-    const newQty=(existing?.qty||0)+qty;
-    await sb.from('stock').upsert({product_id:pid,location_id:locId,quantity:newQty},{onConflict:'product_id,location_id'});
-    // Log movement
-    await sb.from('movements').insert({product_id:pid,location_to:locId,quantity:qty,movement_type:'receive',reference:ref,notes:note,user_id:user.id,user_email:profile?.email});
-    await logAction('receive',{product_id:pid,product_name:p?.name,quantity:qty,location_to:l?.name,reference:ref});
-    toast(`✓ ${qty} unités réceptionnées !`,'success');
+  const note=document.getElementById('recv-note')?.value.trim()||'';
+  if(!recvCart.length){toast('Ajoute au moins un produit','error');return;}
+  if(!locId){toast('Choisis un emplacement de destination','error');return;}
+  if(recvCart.some(l=>!l.qty||l.qty<=0)){toast('Chaque ligne doit avoir une quantité','error');return;}
+  const total=recvCart.reduce((s,l)=>s+l.qty*l.cost,0);
+  const l=locations.find(x=>x.id===locId);
+  try{
+    const {data:rec,error:e1}=await sb.from('receptions').insert({
+      supplier_id: supId?parseInt(supId):null,
+      location_id: locId,
+      invoice_number: invoice||null,
+      received_date: date||new Date().toISOString().slice(0,10),
+      total_amount: total,
+      note: note||null,
+      created_by: user.id
+    }).select().single();
+    if(e1)throw e1;
+    const items=recvCart.map(line=>({reception_id:rec.id,product_id:line.pid,quantity:line.qty,unit_cost:line.cost}));
+    const {error:e2}=await sb.from('reception_items').insert(items);
+    if(e2)throw e2;
+    for(const line of recvCart){
+      const existing=stockMap[line.pid]?.byLocation.find(b=>b.locId===locId);
+      const newQty=(existing?.qty||0)+line.qty;
+      await sb.from('stock').upsert({product_id:line.pid,location_id:locId,quantity:newQty},{onConflict:'product_id,location_id'});
+      await sb.from('movements').insert({product_id:line.pid,location_to:locId,quantity:line.qty,movement_type:'receive',reference:invoice||null,notes:`Réception${invoice?' #'+invoice:''}`,user_id:user.id,user_email:profile?.email});
+    }
+    await logAction('receive',{reception_id:rec.id,invoice,total,lines:recvCart.length,location_to:l?.name});
+    toast(`✓ Réception enregistrée — ${recvCart.length} produit(s), ${fmtCAD(total)}`,'success');
+    recvCart=[];
     await loadAll();
     vReceive(document.getElementById('main-content'));
-  } catch(e){toast('Erreur: '+e.message,'error');}
+  }catch(err){toast('Erreur: '+err.message,'error');}
 }
 
+async function loadRecvHistory(){
+  const box=document.getElementById('recv-history'); if(!box)return;
+  try{
+    const {data,error}=await sb.from('receptions').select('*').order('created_at',{ascending:false}).limit(15);
+    if(error)throw error;
+    if(!data||!data.length){box.innerHTML=`<div style="color:var(--text3);font-size:13px">Aucune réception enregistrée pour le moment.</div>`;return;}
+    box.innerHTML=data.map(r=>{
+      const sup=suppliers.find(s=>s.id===r.supplier_id);
+      return `<div onclick="showReception(${r.id})" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid var(--border);cursor:pointer">
+        <div style="min-width:0">
+          <div style="font-size:13px;font-weight:500">${escHtml(sup?.name||'Fournisseur —')}${r.invoice_number?` · <span class="mono" style="color:var(--text3)">${escHtml(r.invoice_number)}</span>`:''}</div>
+          <div style="font-size:11px;color:var(--text3)">${r.received_date||''}</div>
+        </div>
+        <div style="font-family:var(--font-mono);font-weight:600;color:var(--green);white-space:nowrap">${fmtCAD(r.total_amount)}</div>
+      </div>`;
+    }).join('');
+  }catch(err){box.innerHTML=`<div style="color:var(--red);font-size:13px">Erreur chargement historique: ${escHtml(err.message)}</div>`;}
+}
+async function showReception(id){
+  try{
+    const [{data:rec},{data:items}]=await Promise.all([
+      sb.from('receptions').select('*').eq('id',id).single(),
+      sb.from('reception_items').select('*').eq('reception_id',id)
+    ]);
+    const sup=suppliers.find(s=>s.id===rec.supplier_id);
+    const loc=locations.find(l=>l.id===rec.location_id);
+    const rows=(items||[]).map(it=>{const p=products.find(x=>x.id===it.product_id);return `<tr><td>${escHtml(p?.name||'—')}</td><td style="text-align:center;font-family:var(--font-mono)">${Math.round(it.quantity)}</td><td style="text-align:right;font-family:var(--font-mono)">${fmtCAD(it.unit_cost)}</td><td style="text-align:right;font-family:var(--font-mono);color:var(--green)">${fmtCAD(it.line_total)}</td></tr>`;}).join('');
+    openModal(`Réception ${rec.invoice_number?'#'+escHtml(rec.invoice_number):''}`,`
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.7">
+        <div><strong>Fournisseur :</strong> ${escHtml(sup?.name||'—')}</div>
+        <div><strong>Date :</strong> ${rec.received_date||'—'}</div>
+        <div><strong>Emplacement :</strong> ${escHtml(loc?.full_path||loc?.name||'—')}</div>
+        ${rec.note?`<div><strong>Note :</strong> ${escHtml(rec.note)}</div>`:''}
+      </div>
+      <table style="width:100%"><thead><tr><th>Produit</th><th style="text-align:center">Qté</th><th style="text-align:right">Coût/u</th><th style="text-align:right">Total</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-weight:700">
+        <span>Total avant taxes</span><span style="font-family:var(--font-mono);color:var(--green)">${fmtCAD(rec.total_amount)}</span>
+      </div>`);
+  }catch(err){toast('Erreur: '+err.message,'error');}
+}
 function vTransfer(c) {
   const internalLocs=locations.filter(l=>l.usage==='internal');
   c.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
@@ -2447,8 +2587,8 @@ async function vAuditLog(c) {
 
 // ── MOBILE BOTTOM BAR ─────────────────────────────────────
 const MOB_TAB_MAP = {
-  dashboard:'mobtab-dashboard', products:'mobtab-products',
-  inventory:'mobtab-inventory'
+  dashboard:'mobtab-dashboard', receive:'mobtab-receive',
+  reduce:'mobtab-reduce', inventory:'mobtab-inventory'
 };
 
 function syncMobTabs(view) {
@@ -2477,15 +2617,14 @@ function updateMobBackBtn(view) {
 
 function mobNav(view) {
   updateMobBackBtn(view);
-  if(window.innerWidth <= 768 && ['receive','transfer','reduce','inventory'].includes(view)) {
+  if(window.innerWidth <= 768 && ['transfer','reduce','inventory'].includes(view)) {
     currentView = view;
     document.getElementById('topbar-title').textContent = {
-      receive:'Réceptionner', transfer:'Transfert',
+      transfer:'Transfert',
       reduce:'Réduire stock', inventory:'Faire inventaire'
     }[view];
     syncMobTabs(view);
     const c = document.getElementById('main-content');
-    if(view==='receive')   mScanReceive(c);
     if(view==='transfer')  mScanTransfer(c);
     if(view==='reduce')    mScanReduce(c);
     if(view==='inventory') mScanInventory(c);
@@ -3529,7 +3668,7 @@ function openBarcodeScanner(mode='general') {
   setBcStatus('<i class="ti ti-camera" style="font-size:16px"></i><span>Initialisation…</span>');
   startCamera();
 }
-function closeBc(){document.getElementById('bc-overlay').classList.remove('show');stopCamera();}
+function closeBc(){bcCartMode=false;document.getElementById('bc-overlay').classList.remove('show');stopCamera();}
 async function startCamera() {
   stopCamera();
   try {
@@ -3673,6 +3812,12 @@ async function searchByBarcode(code) {
   if(!found){
     document.getElementById('bc-notfound').classList.add('show');
     setTimeout(()=>{document.getElementById('bc-notfound').classList.remove('show');startCamera();},3000);
+    return;
+  }
+  if(bcCartMode){
+    recvAddProduct(found.id);
+    setBcStatus(`<i class="ti ti-plus" style="color:var(--green);font-size:16px"></i><span style="color:var(--green)">${escHtml(found.name)} ajouté</span>`);
+    setTimeout(()=>startCamera(),800);
     return;
   }
   bcFoundProduct=found;
