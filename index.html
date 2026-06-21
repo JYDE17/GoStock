@@ -39,8 +39,9 @@ html,body{height:100%;background:var(--bg0);color:var(--text1);font-family:var(-
 .hidden{display:none!important}
 /* SIDEBAR */
 .sidebar{width:232px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:sticky;top:0;height:100vh}
-.logo{padding:18px 16px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
-.logo-icon img{width:160px;height:120px;object-fit:contain;}
+.logo{padding:16px 16px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--border)}
+.logo-icon{width:100%;display:flex;justify-content:center}
+.logo-icon img{width:100%;max-width:200px;height:auto;object-fit:contain;display:block}
 .logo-text{font-size:14px;font-weight:700;letter-spacing:-.02em}
 .logo-sub{font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-top:1px}
 .nav-group{padding:10px 0 2px}
