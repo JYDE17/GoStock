@@ -378,10 +378,10 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
   <div class="nav-group">
     <div class="nav-label" onclick="toggleNavGroup(this)">Opérations<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
-      <div class="nav-item" onclick="nav('receive',this)"><i class="ti ti-truck-delivery"></i>Réceptionner</div>
+      <div class="nav-item" onclick="nav('receive',this)"><i class="ti ti-truck-delivery"></i>Réception</div>
       <div class="nav-item" onclick="nav('transfer',this)"><i class="ti ti-transfer"></i>Transfert</div>
-      <div class="nav-item" onclick="nav('reduce',this)"><i class="ti ti-minus-vertical"></i>Réduire stock<span class="nav-badge hidden" id="pending-wd-badge">0</span></div>
-      <div class="nav-item" onclick="nav('inventory',this)"><i class="ti ti-clipboard-list"></i>Faire inventaire<span class="nav-badge hidden" id="pending-inv-badge">0</span></div>
+      <div class="nav-item" onclick="nav('reduce',this)"><i class="ti ti-minus-vertical"></i>Retrait<span class="nav-badge hidden" id="pending-wd-badge">0</span></div>
+      <div class="nav-item" onclick="nav('inventory',this)"><i class="ti ti-clipboard-list"></i>Inventaire<span class="nav-badge hidden" id="pending-inv-badge">0</span></div>
     </div>
   </div>
 
@@ -547,9 +547,9 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
         <div class="bc-result-row"><span style="color:var(--text3)">Statut</span><span id="bc-pstatus"></span></div>
       </div>
       <div class="bc-actions" id="bc-actions" style="display:none">
-        <button class="btn btn-success" onclick="bcAction('receive')"><i class="ti ti-truck-delivery"></i> Réceptionner</button>
+        <button class="btn btn-success" onclick="bcAction('receive')"><i class="ti ti-truck-delivery"></i> Réception</button>
         <button class="btn btn-primary" onclick="bcAction('transfer')"><i class="ti ti-transfer"></i> Transférer</button>
-        <button class="btn btn-danger"  onclick="bcAction('reduce')"><i class="ti ti-minus-vertical"></i> Réduire stock</button>
+        <button class="btn btn-danger"  onclick="bcAction('reduce')"><i class="ti ti-minus-vertical"></i> Retrait</button>
         <button class="btn"             onclick="bcAction('inventory')"><i class="ti ti-clipboard-list"></i> Inventaire</button>
       </div>
     </div>
