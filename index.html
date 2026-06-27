@@ -379,7 +379,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <div class="nav-label" onclick="toggleNavGroup(this)">Opérations<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
       <div class="nav-item" onclick="nav('receive',this)"><i class="ti ti-truck-delivery"></i>Réception</div>
-      <div class="nav-item" onclick="nav('transfer',this)"><i class="ti ti-transfer"></i>Transfert</div>
+      <div class="nav-item" onclick="nav('transfer',this)"><i class="ti ti-transfer"></i>Transfert<span class="nav-badge hidden" id="pending-tf-badge">0</span></div>
       <div class="nav-item" onclick="nav('reduce',this)"><i class="ti ti-minus-vertical"></i>Retrait<span class="nav-badge hidden" id="pending-wd-badge">0</span></div>
       <div class="nav-item" onclick="nav('inventory',this)"><i class="ti ti-clipboard-list"></i>Inventaire<span class="nav-badge hidden" id="pending-inv-badge">0</span></div>
     </div>
@@ -463,10 +463,11 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
     <div style="width:36px;height:4px;background:var(--border2);border-radius:2px"></div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin-bottom:1px">
-    <div onclick="closeMoreSheet();mobNav('transfer')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
+    <div onclick="closeMoreSheet();mobNav('transfer')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;position:relative">
       <div style="width:48px;height:48px;background:var(--blue-bg);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--blue)"><i class="ti ti-transfer"></i></div>
       <div style="font-size:14px;font-weight:600">Transfert</div>
       <div style="font-size:11px;color:var(--text3)">Déplacer stock</div>
+      <span class="mob-badge hidden" id="mob-tf-badge" style="position:absolute;top:12px;right:12px">0</span>
     </div>
     <div onclick="closeMoreSheet();mobNav('create')" style="background:var(--bg1);padding:18px 16px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center">
       <div style="width:48px;height:48px;background:var(--amber-dim);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--amber)"><i class="ti ti-plus"></i></div>

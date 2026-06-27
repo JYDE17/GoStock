@@ -15,6 +15,7 @@ let stockMap = {};        // productId -> { total, byLocation: [{locId,qty}] }
 let currentView = 'dashboard', filterStatus = 'all', filterCat = 'all', searchQ = '';
 let bcFoundProduct = null, bcStream = null, bcInterval = null;
 let recvCart = [], bcCartMode = false;
+let transferTasks = [];
 
 // ══════════════════════════════════════════════════════════
 // AUTH
@@ -173,6 +174,7 @@ async function loadAll() {
     });
 
     updateAlerts();
+    await loadTransferTasks();
     // Don't re-render if we're in a mobile scanner operation
     const mScanViews = ['receive','transfer','reduce','inventory'];
     if(!(window.innerWidth <= 768 && mScanViews.includes(currentView) && window._msCtx?.selectedProduct !== undefined)) {
@@ -209,11 +211,31 @@ function updateAlerts() {
   const b = document.getElementById('alert-badge');
   if(b){ b.textContent=cnt; b.classList.toggle('hidden',cnt===0); }
 }
+async function loadTransferTasks() {
+  try{
+    const {data}=await sb.from('transfer_tasks').select('*').eq('status','pending').order('created_at',{ascending:false});
+    transferTasks=data||[];
+  }catch(e){ transferTasks=[]; }
+  updateTransferBadge();
+}
+function updateTransferBadge() {
+  const cnt=transferTasks.length;
+  ['pending-tf-badge','mob-tf-badge'].forEach(id=>{
+    const b=document.getElementById(id);
+    if(b){ b.textContent=cnt; b.classList.toggle('hidden',cnt===0); }
+  });
+}
 
 // ══════════════════════════════════════════════════════════
 // NAV
 // ══════════════════════════════════════════════════════════
 function nav(view, el) {
+  // Garde : quitter la réception avec un panier non vide
+  if(currentView==='receive' && view!=='receive' && recvCart.length>0 && !window._recvLeaving){
+    recvConfirmLeave(view, el);
+    return;
+  }
+  window._recvLeaving=false;
   currentView = view;
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const found = el || [...document.querySelectorAll('.nav-item')]
@@ -661,14 +683,16 @@ function vReceive(c) {
         <div class="form-group"><label class="form-label">Emplacement destination *</label>
           <select id="recv-loc" class="form-input">
             <option value="">-- Emplacement --</option>
-            ${internalLocs.map(l=>`<option value="${l.id}">${escHtml(l.full_path||l.name)}</option>`).join('')}
+            ${internalLocs.map(l=>`<option value="${l.id}"${l.is_receiving?' selected':''}>${escHtml(l.full_path||l.name)}${l.is_receiving?' (réception)':''}</option>`).join('')}
           </select>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Réceptionne dans ta <strong>zone de réception</strong> par défaut, puis attribue les emplacements via Transfert.</div>
         </div>
       </div>
 
       <div style="background:var(--bg2);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin:6px 0 14px">
-        <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-          <i class="ti ti-barcode" style="font-size:14px"></i> Ajouter un produit
+        <div style="font-size:11px;color:var(--blue);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span style="display:flex;align-items:center;gap:6px"><i class="ti ti-barcode" style="font-size:14px"></i> Ajouter un produit</span>
+          <button class="btn" onclick="recvOpenCreateProduct()" style="height:26px;padding:0 10px;font-size:11px"><i class="ti ti-plus"></i> Nouveau produit</button>
         </div>
         <div style="display:flex;gap:8px">
           <input id="recv-search" type="text" class="form-input" placeholder="Scanner ou taper code-barres / nom…" autocomplete="off"
@@ -682,17 +706,26 @@ function vReceive(c) {
 
       <div id="recv-foot" style="display:none">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 4px 4px;border-top:1px solid var(--border);margin-top:6px">
-          <div style="font-size:13px;color:var(--text3)">Total avant taxes</div>
-          <div id="recv-grand-total" style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:var(--green)">${fmtCAD(0)}</div>
+          <div style="font-size:13px;color:var(--text3)"><span id="recv-count" style="color:var(--text1);font-weight:600">0</span> produit(s) · <span id="recv-units" style="color:var(--text1);font-weight:600">0</span> unité(s)</div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text3)">Total avant taxes</div>
+            <div id="recv-grand-total" style="font-size:20px;font-weight:700;font-family:var(--font-mono);color:var(--green)">${fmtCAD(0)}</div>
+          </div>
         </div>
         <div class="form-group" style="margin-top:10px"><label class="form-label">Note (optionnel)</label>
           <input id="recv-note" type="text" class="form-input" placeholder="Remarque…">
         </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
-          <button class="btn" onclick="recvCart=[];vReceive()">Vider</button>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;flex-wrap:wrap">
+          <button class="btn" onclick="recvClear()">Vider</button>
+          <button class="btn btn-amber" onclick="recvSaveDraft()"><i class="ti ti-clock-pause"></i> Mettre en attente</button>
           <button class="btn btn-success" onclick="submitReceive()"><i class="ti ti-check"></i> Valider la réception</button>
         </div>
       </div>
+    </div>
+
+    <div id="recv-drafts-card" class="table-card" style="margin-top:16px;display:none">
+      <div class="table-toolbar"><div class="table-toolbar-title"><i class="ti ti-clock-pause" style="color:var(--amber);margin-right:6px"></i>Réceptions en attente</div></div>
+      <div id="recv-drafts" style="padding:14px"></div>
     </div>
 
     <div class="table-card" style="margin-top:16px">
@@ -702,7 +735,55 @@ function vReceive(c) {
   </div>`;
   recvRenderLines();
   loadRecvHistory();
+  loadRecvDrafts();
+  recvRestoreFormDraft();
   setTimeout(()=>document.getElementById('recv-search')?.focus(), 100);
+}
+
+// Restaure les champs d'en-tête si un brouillon de formulaire est en mémoire
+function recvRestoreFormDraft(){
+  if(!window._recvForm) return;
+  const f=window._recvForm;
+  const set=(id,v)=>{const e=document.getElementById(id);if(e&&v!=null)e.value=v;};
+  set('recv-supplier',f.supplier); set('recv-invoice',f.invoice);
+  set('recv-date',f.date); set('recv-loc',f.loc); set('recv-note',f.note);
+}
+function recvCaptureForm(){
+  window._recvForm={
+    supplier:document.getElementById('recv-supplier')?.value||'',
+    invoice:document.getElementById('recv-invoice')?.value||'',
+    date:document.getElementById('recv-date')?.value||'',
+    loc:document.getElementById('recv-loc')?.value||'',
+    note:document.getElementById('recv-note')?.value||''
+  };
+}
+function recvClear(){
+  recvCart=[]; window._recvForm=null; window._recvEditingDraft=null;
+  vReceive(document.getElementById('main-content'));
+}
+
+// Popup quand on quitte une réception non sauvegardée
+function recvConfirmLeave(targetView, el){
+  const n=recvCart.length;
+  openModal('Réception non sauvegardée', `
+    <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:8px">
+      Tu as <strong style="color:var(--text1)">${n} produit(s)</strong> dans une réception non validée. Que veux-tu faire ?
+    </div>
+  `, [
+    {label:'Quitter sans sauvegarder', cls:'btn-danger', action:`recvLeaveAction('discard','${targetView}')`},
+    {label:'Annuler', cls:'', action:'closeModal()'},
+    {label:'<i class="ti ti-clock-pause"></i> Mettre en attente et quitter', cls:'btn-primary', action:`recvLeaveAction('draft','${targetView}')`}
+  ]);
+}
+async function recvLeaveAction(mode, targetView){
+  if(mode==='draft'){
+    await recvSaveDraft(true);
+  } else {
+    recvCart=[]; window._recvForm=null; window._recvEditingDraft=null;
+  }
+  closeModal();
+  window._recvLeaving=true;
+  nav(targetView);
 }
 
 function recvSearchInput(){
@@ -759,7 +840,12 @@ function recvRenderLines(){
 function recvSetQty(i,v){if(!recvCart[i])return;recvCart[i].qty=parseFloat(v)||0;const lt=document.getElementById('recv-lt-'+i);if(lt)lt.textContent=fmtCAD(recvCart[i].qty*recvCart[i].cost);recvUpdateTotal();}
 function recvSetCost(i,v){if(!recvCart[i])return;recvCart[i].cost=parseFloat(v)||0;const lt=document.getElementById('recv-lt-'+i);if(lt)lt.textContent=fmtCAD(recvCart[i].qty*recvCart[i].cost);recvUpdateTotal();}
 function recvRemove(i){recvCart.splice(i,1);recvRenderLines();}
-function recvUpdateTotal(){const t=recvCart.reduce((s,l)=>s+l.qty*l.cost,0);const e=document.getElementById('recv-grand-total');if(e)e.textContent=fmtCAD(t);}
+function recvUpdateTotal(){
+  const t=recvCart.reduce((s,l)=>s+l.qty*l.cost,0);
+  const e=document.getElementById('recv-grand-total');if(e)e.textContent=fmtCAD(t);
+  const cnt=document.getElementById('recv-count');if(cnt)cnt.textContent=recvCart.length;
+  const units=document.getElementById('recv-units');if(units)units.textContent=Math.round(recvCart.reduce((s,l)=>s+(l.qty||0),0));
+}
 function recvOpenScanner(){bcCartMode=true;openBarcodeScanner('general');}
 
 function _defaultLocFor(pid, selId){
@@ -808,9 +894,28 @@ async function submitReceive(){
       await sb.from('movements').insert({product_id:line.pid,location_to:locId,quantity:line.qty,movement_type:'receive',reference:invoice||null,notes:`Réception${invoice?' #'+invoice:''}`,user_id:user.id,user_email:profile?.email});
     }
     await logAction('receive',{reception_id:rec.id,invoice,total,lines:recvCart.length,location_to:l?.name});
+    // Si réceptionné dans la zone de réception → créer une notif pour attribuer les emplacements
+    if(l && l.is_receiving){
+      try{
+        await sb.from('transfer_tasks').insert({
+          reception_id: rec.id,
+          location_id: locId,
+          product_ids: recvCart.map(line=>line.pid),
+          status: 'pending',
+          note: `Réception ${invoice?'#'+invoice:''} à attribuer`,
+          created_by: user.id
+        });
+      }catch(te){ console.warn('transfer_tasks:', te.message); }
+    }
+    // Supprimer le brouillon si on validait depuis un brouillon
+    if(window._recvEditingDraft){
+      try{ await sb.from('reception_drafts').delete().eq('id', window._recvEditingDraft); }catch(e){}
+      window._recvEditingDraft=null;
+    }
     toast(`✓ Réception enregistrée — ${recvCart.length} produit(s), ${fmtCAD(total)}`,'success');
-    recvCart=[];
+    recvCart=[]; window._recvForm=null;
     await loadAll();
+    await loadTransferTasks();
     vReceive(document.getElementById('main-content'));
   }catch(err){toast('Erreur: '+err.message,'error');}
 }
@@ -832,6 +937,138 @@ async function loadRecvHistory(){
       </div>`;
     }).join('');
   }catch(err){box.innerHTML=`<div style="color:var(--red);font-size:13px">Erreur chargement historique: ${escHtml(err.message)}</div>`;}
+}
+
+// ══ RÉCEPTIONS EN ATTENTE (BROUILLONS) ════════════════════
+async function recvSaveDraft(silent){
+  if(!recvCart.length){toast('Aucun produit à mettre en attente','error');return;}
+  recvCaptureForm();
+  const f=window._recvForm||{};
+  const payload={
+    supplier_id: f.supplier?parseInt(f.supplier):null,
+    location_id: f.loc?parseInt(f.loc):null,
+    invoice_number: f.invoice||null,
+    received_date: f.date||null,
+    note: f.note||null,
+    items: recvCart,
+    created_by: user.id
+  };
+  try{
+    if(window._recvEditingDraft){
+      await sb.from('reception_drafts').update({...payload, updated_at:new Date().toISOString()}).eq('id',window._recvEditingDraft);
+    }else{
+      await sb.from('reception_drafts').insert(payload);
+    }
+    toast('✓ Réception mise en attente','success');
+    recvCart=[]; window._recvForm=null; window._recvEditingDraft=null;
+    if(!silent) vReceive(document.getElementById('main-content'));
+  }catch(err){toast('Erreur: '+err.message,'error');}
+}
+async function loadRecvDrafts(){
+  const card=document.getElementById('recv-drafts-card');
+  const box=document.getElementById('recv-drafts');
+  if(!box)return;
+  try{
+    const {data,error}=await sb.from('reception_drafts').select('*').order('updated_at',{ascending:false});
+    if(error)throw error;
+    if(!data||!data.length){ if(card)card.style.display='none'; return; }
+    if(card)card.style.display='';
+    box.innerHTML=data.map(d=>{
+      const sup=suppliers.find(s=>s.id===d.supplier_id);
+      const n=(d.items||[]).length;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 6px;border-bottom:1px solid var(--border)">
+        <div style="min-width:0;cursor:pointer;flex:1" onclick="recvResumeDraft(${d.id})">
+          <div style="font-size:13px;font-weight:500">${escHtml(sup?.name||'Fournisseur —')}${d.invoice_number?` · <span class="mono" style="color:var(--text3)">${escHtml(d.invoice_number)}</span>`:''}</div>
+          <div style="font-size:11px;color:var(--text3)">${n} produit(s) · ${d.received_date||''}</div>
+        </div>
+        <button class="btn btn-amber" style="height:30px;padding:0 10px;font-size:12px" onclick="recvResumeDraft(${d.id})"><i class="ti ti-edit"></i> Reprendre</button>
+        <button class="btn btn-danger" style="height:30px;padding:0 10px;font-size:12px" onclick="recvDeleteDraft(${d.id})"><i class="ti ti-trash"></i></button>
+      </div>`;
+    }).join('');
+  }catch(err){ if(card)card.style.display='none'; }
+}
+async function recvResumeDraft(id){
+  try{
+    const {data,error}=await sb.from('reception_drafts').select('*').eq('id',id).single();
+    if(error)throw error;
+    recvCart=(data.items||[]).map(l=>({pid:l.pid,qty:l.qty,cost:l.cost}));
+    window._recvForm={
+      supplier:data.supplier_id?String(data.supplier_id):'',
+      invoice:data.invoice_number||'',
+      date:data.received_date||'',
+      loc:data.location_id?String(data.location_id):'',
+      note:data.note||''
+    };
+    window._recvEditingDraft=id;
+    vReceive(document.getElementById('main-content'));
+    toast('Brouillon repris','info');
+  }catch(err){toast('Erreur: '+err.message,'error');}
+}
+async function recvDeleteDraft(id){
+  if(!confirm('Supprimer ce brouillon de réception ?'))return;
+  try{
+    await sb.from('reception_drafts').delete().eq('id',id);
+    toast('Brouillon supprimé','success');
+    loadRecvDrafts();
+  }catch(err){toast('Erreur: '+err.message,'error');}
+}
+
+// ══ CRÉER UN PRODUIT DEPUIS LA RÉCEPTION ══════════════════
+function recvOpenCreateProduct(){
+  const pre=(document.getElementById('recv-search')?.value||'').trim();
+  openModal('Nouveau produit', `
+    <div class="form-group"><label class="form-label">Nom *</label><input id="rcp-name" type="text" class="form-input" placeholder="ex: Câble HDMI 2m" value="${escHtml(pre)}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Référence</label><input id="rcp-ref" type="text" class="form-input"></div>
+      <div class="form-group"><label class="form-label">Code-barres</label><input id="rcp-barcode" type="text" class="form-input"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Catégorie</label>
+        <select id="rcp-cat" class="form-input"><option value="">-- Choisir --</option>${categories.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Fournisseur</label>
+        <select id="rcp-supplier" class="form-input"><option value="">-- Choisir --</option>${suppliers.map(s=>`<option value="${escHtml(s.name)}">${escHtml(s.name)}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Prix de vente (CAD)</label><input id="rcp-price" type="number" min="0" step="0.01" class="form-input" placeholder="0.00"></div>
+      <div class="form-group"><label class="form-label">Coût (CAD)</label><input id="rcp-cost" type="number" min="0" step="0.01" class="form-input" placeholder="0.00"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Prix par boîte (CAD)</label><input id="rcp-boxprice" type="number" min="0" step="0.01" class="form-input" placeholder="0.00"></div>
+      <div class="form-group"><label class="form-label">Unités par boîte</label><input id="rcp-boxqty" type="number" min="0" step="1" class="form-input" placeholder="ex: 24"></div>
+    </div>
+  `, [
+    {label:'Fermer',cls:'',action:'closeModal()'},
+    {label:'<i class="ti ti-check"></i> Créer et ajouter', cls:'btn-primary', action:'submitRecvCreateProduct()'}
+  ]);
+}
+async function submitRecvCreateProduct(){
+  const name=document.getElementById('rcp-name')?.value?.trim();
+  if(!name){toast('Nom obligatoire','error');return;}
+  recvCaptureForm(); // ne pas perdre l'en-tête en cours
+  const vals={
+    name,
+    reference:document.getElementById('rcp-ref')?.value?.trim()||null,
+    barcode:document.getElementById('rcp-barcode')?.value?.trim()||null,
+    category_id:parseInt(document.getElementById('rcp-cat')?.value)||null,
+    supplier:document.getElementById('rcp-supplier')?.value||null,
+    sale_price:parseFloat(document.getElementById('rcp-price')?.value)||0,
+    cost_price:parseFloat(document.getElementById('rcp-cost')?.value)||0,
+    price_per_box:parseFloat(document.getElementById('rcp-boxprice')?.value)||0,
+    units_per_box:parseInt(document.getElementById('rcp-boxqty')?.value)||0,
+    active:true
+  };
+  try{
+    const {data:prod,error}=await sb.from('products').insert(vals).select().single();
+    if(error)throw error;
+    await logAction('create',{product_name:name});
+    products.push(prod); // dispo immédiatement
+    recvAddProduct(prod.id);
+    closeModal();
+    vReceive(document.getElementById('main-content'));
+    toast(`✓ "${name}" créé et ajouté à la réception`,'success');
+  }catch(e){toast('Erreur: '+e.message,'error');}
 }
 async function showReception(id){
   try{
@@ -930,7 +1167,32 @@ function exportRecvReport(){
 }
 function vTransfer(c) {
   const internalLocs=locations.filter(l=>l.usage==='internal');
-  c.innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+  const tasksHtml = transferTasks.length ? `
+    <div class="table-card" style="margin-bottom:16px;border:1px solid var(--amber)">
+      <div class="table-toolbar" style="background:var(--amber-dim)">
+        <div class="table-toolbar-title" style="color:var(--amber)"><i class="ti ti-bell" style="margin-right:6px"></i>Réceptions à attribuer (${transferTasks.length})</div>
+      </div>
+      <div style="padding:6px 14px 14px">
+        <div style="font-size:12px;color:var(--text3);padding:8px 0">Ces réceptions sont entrées dans la <strong>zone de réception</strong> et attendent d'être réparties (pits, stock, etc.).</div>
+        ${transferTasks.map(t=>{
+          const loc=locations.find(l=>l.id===t.location_id);
+          const prods=(t.product_ids||[]).map(pid=>products.find(p=>p.id===pid)).filter(Boolean);
+          return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
+              <div style="min-width:0">
+                <div style="font-size:13px;font-weight:600">${escHtml(t.note||'Réception à attribuer')}</div>
+                <div style="font-size:11px;color:var(--text3)">Dans ${escHtml(loc?.name||'—')} · ${prods.length} produit(s) · ${fmtDate(t.created_at)}</div>
+              </div>
+              <button class="btn btn-success" style="height:30px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="completeTransferTask(${t.id})"><i class="ti ti-check"></i> Tout attribué</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${prods.map(p=>`<span onclick="goTo('transfer',${p.id})" style="cursor:pointer;font-size:11px;padding:4px 10px;background:var(--bg1);border:1px solid var(--border);border-radius:20px"><i class="ti ti-arrow-right" style="font-size:10px;color:var(--blue)"></i> ${escHtml(p.name)} <span class="mono" style="color:var(--text3)">(${Math.round(getQty(p.id))})</span></span>`).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+  c.innerHTML=tasksHtml+`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
   <div class="table-card" style="padding:24px">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
       <div style="width:44px;height:44px;background:var(--blue-bg);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--blue)"><i class="ti ti-transfer"></i></div>
@@ -1036,6 +1298,16 @@ async function submitTransfer() {
     await loadAll();
     vTransfer(document.getElementById('main-content'));
   } catch(e){toast('Erreur: '+e.message,'error');}
+}
+
+async function completeTransferTask(id){
+  if(!confirm('Marquer cette réception comme entièrement attribuée ?'))return;
+  try{
+    await sb.from('transfer_tasks').update({status:'done', completed_at:new Date().toISOString(), completed_by:user.id}).eq('id',id);
+    toast('✓ Réception attribuée','success');
+    await loadTransferTasks();
+    vTransfer(document.getElementById('main-content'));
+  }catch(e){toast('Erreur: '+e.message,'error');}
 }
 
 function vReduce(c) {
@@ -1459,15 +1731,12 @@ function vCreate(c) {
       <div class="form-group"><label class="form-label">Prix de vente (CAD)</label><input id="cr-price" type="number" min="0" step="1" class="form-input" placeholder="0.00"></div>
       <div class="form-group"><label class="form-label">Coût (CAD)</label><input id="cr-cost" type="number" min="0" step="1" class="form-input" placeholder="0.00"></div>
     </div>
-    <div class="form-section">Stock initial (optionnel)</div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Quantité initiale</label><input id="cr-qty" type="number" min="0" step="1" class="form-input" placeholder="0"></div>
-      <div class="form-group"><label class="form-label">Emplacement</label>
-        <select id="cr-loc" class="form-input">
-          <option value="">-- Aucun --</option>
-          ${locations.filter(l=>l.usage==='internal').map(l=>`<option value="${l.id}">${escHtml(l.name)}</option>`).join('')}
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">Prix par boîte (CAD)</label><input id="cr-boxprice" type="number" min="0" step="0.01" class="form-input" placeholder="0.00"></div>
+      <div class="form-group"><label class="form-label">Unités par boîte</label><input id="cr-boxqty" type="number" min="0" step="1" class="form-input" placeholder="ex: 24"></div>
+    </div>
+    <div style="background:var(--blue-bg);border:1px solid var(--blue-dim);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--blue);margin-bottom:14px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-info-circle"></i> Le stock se gère désormais par les <strong>réceptions</strong>. Crée le produit, puis réceptionne-le.
     </div>
     <div class="form-group"><label class="form-label">Description</label><textarea id="cr-desc" class="form-input" rows="2"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -1486,6 +1755,8 @@ async function submitCreate() {
     uom_id:parseInt(document.getElementById('cr-uom').value)||null,
     sale_price:parseFloat(document.getElementById('cr-price').value)||0,
     cost_price:parseFloat(document.getElementById('cr-cost').value)||0,
+    price_per_box:parseFloat(document.getElementById('cr-boxprice').value)||0,
+    units_per_box:parseInt(document.getElementById('cr-boxqty').value)||0,
     description:document.getElementById('cr-desc').value.trim()||null,
     supplier:document.getElementById('cr-supplier').value||null,
     active:true
@@ -1493,15 +1764,8 @@ async function submitCreate() {
   try {
     const {data:prod,error}=await sb.from('products').insert(vals).select().single();
     if(error) throw error;
-    // Initial stock
-    const initQty=parseFloat(document.getElementById('cr-qty').value)||0;
-    const initLoc=parseInt(document.getElementById('cr-loc').value)||null;
-    if(initQty>0&&initLoc){
-      await sb.from('stock').insert({product_id:prod.id,location_id:initLoc,quantity:initQty});
-      await sb.from('movements').insert({product_id:prod.id,location_to:initLoc,quantity:initQty,movement_type:'receive',notes:'Stock initial',user_id:user.id,user_email:profile?.email});
-    }
-    await logAction('create',{product_name:name,quantity:initQty||null});
-    toast(`✓ Article "${name}" créé !`,'success');
+    await logAction('create',{product_name:name});
+    toast(`✓ Article "${name}" créé ! Réceptionne-le pour ajouter du stock.`,'success');
     await loadAll();
     vCreate(document.getElementById('main-content'));
   } catch(e){toast('Erreur: '+e.message,'error');}
@@ -1621,6 +1885,7 @@ async function showProd(id) {
         <div class="detail-cell"><div class="detail-cell-label">Statut</div><div class="detail-cell-value"><span class="badge badge-${s.color}">${s.label}</span></div></div>
         <div class="detail-cell"><div class="detail-cell-label">Prix vente</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.sale_price)}</div></div>
         <div class="detail-cell"><div class="detail-cell-label">Coût</div><div class="detail-cell-value" style="font-family:var(--font-mono)">${fmtCAD(p.cost_price)}</div></div>
+        <div class="detail-cell"><div class="detail-cell-label">Prix / boîte${p.units_per_box?` (${p.units_per_box} u)`:''}</div><div class="detail-cell-value" style="font-family:var(--font-mono);color:var(--accent)">${p.price_per_box?fmtCAD(p.price_per_box):'—'}</div></div>
         <div class="detail-cell"><div class="detail-cell-label">Valeur du stock</div><div class="detail-cell-value" style="font-family:var(--font-mono);color:var(--green)">${fmtCAD(qty*(p.cost_price||0))}</div></div>
       </div>
 
@@ -1743,6 +2008,14 @@ function openEditProduct(id) {
         <input id="ep-cost" type="number" min="0" step="1" class="form-input" value="${p.cost_price||0}">
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Prix par boîte (CAD)</label>
+        <input id="ep-boxprice" type="number" min="0" step="0.01" class="form-input" value="${p.price_per_box||0}">
+      </div>
+      <div class="form-group"><label class="form-label">Unités par boîte</label>
+        <input id="ep-boxqty" type="number" min="0" step="1" class="form-input" value="${p.units_per_box||0}">
+      </div>
+    </div>
     <div class="form-group"><label class="form-label">Description</label>
       <textarea id="ep-desc" class="form-input" rows="2">${escHtml(p.description||'')}</textarea>
     </div>
@@ -1760,13 +2033,15 @@ async function submitEditProduct(id) {
   const supplier = document.getElementById('ep-supplier')?.value || null;
   const price    = parseFloat(document.getElementById('ep-price')?.value) || 0;
   const cost     = parseFloat(document.getElementById('ep-cost')?.value) || 0;
+  const boxPrice = parseFloat(document.getElementById('ep-boxprice')?.value) || 0;
+  const boxQty   = parseInt(document.getElementById('ep-boxqty')?.value) || 0;
   const desc     = document.getElementById('ep-desc')?.value?.trim() || null;
 
   if(!name){ toast('Le nom est obligatoire','error'); return; }
 
   const { error } = await sb.from('products').update({
     name, reference:ref, barcode, category_id:catId, uom_id:uomId,
-    supplier, sale_price:price, cost_price:cost, description:desc,
+    supplier, sale_price:price, cost_price:cost, price_per_box:boxPrice, units_per_box:boxQty, description:desc,
     updated_at: new Date().toISOString()
   }).eq('id', id);
 
@@ -1893,7 +2168,62 @@ function showLoc(id) {
           <span style="font-family:var(--font-mono);color:var(--blue)">${Math.round(b.qty)}</span>
         </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--text3)">Aucun produit</div>'}
     </div>
-  `,[{label:'Fermer',cls:'',action:'closeModal()'}]);
+  `,[{label:'<i class="ti ti-pencil"></i> Renommer',cls:'btn-amber',action:`openEditLoc(${id})`},{label:'Fermer',cls:'',action:'closeModal()'}]);
+}
+
+function renderRecvZoneToggle(l){
+  const on = !!l.is_receiving;
+  return `<div onclick="toggleRecvZone(${l.id})" style="width:40px;height:22px;border-radius:11px;position:relative;cursor:pointer;flex-shrink:0;
+    background:${on?'var(--green)':'var(--bg3)'};border:1px solid ${on?'var(--green)':'var(--border2)'};transition:all .2s" title="${on?'Retirer comme zone de réception':'Définir comme zone de réception'}">
+    <div style="position:absolute;top:2px;left:${on?'18px':'2px'};width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></div>
+  </div>`;
+}
+async function toggleRecvZone(id){
+  const l=locations.find(x=>x.id===id); if(!l) return;
+  const newVal=!l.is_receiving;
+  try{
+    // Une seule zone de réception à la fois : on désactive les autres si on en active une
+    if(newVal){
+      const others=locations.filter(x=>x.is_receiving && x.id!==id).map(x=>x.id);
+      if(others.length) await sb.from('locations').update({is_receiving:false}).in('id',others);
+    }
+    const {error}=await sb.from('locations').update({is_receiving:newVal}).eq('id',id);
+    if(error)throw error;
+    toast(newVal?`✓ "${l.name}" est la zone de réception`:`Zone de réception retirée`,'success');
+    await loadAll();
+    if(currentView==='settings') vSettings(document.getElementById('main-content'));
+  }catch(e){toast('Erreur: '+e.message,'error');}
+}
+
+function openEditLoc(id) {
+  const l = locations.find(x=>x.id===id); if(!l) return;
+  openModal(`Renommer — ${l.name}`, `
+    <div class="form-group"><label class="form-label">Nom de l'emplacement *</label>
+      <input id="el-name" type="text" class="form-input" value="${escHtml(l.name)}">
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px">Le chemin complet sera mis à jour automatiquement.</div>
+  `, [{label:'Fermer',cls:'',action:'closeModal()'},{label:'<i class="ti ti-check"></i> Sauvegarder',cls:'btn-primary',action:`submitEditLoc(${id})`}]);
+}
+async function submitEditLoc(id) {
+  const l = locations.find(x=>x.id===id); if(!l) return;
+  const name = document.getElementById('el-name')?.value?.trim();
+  if(!name){ toast('Nom obligatoire','error'); return; }
+  const parent = locations.find(x=>x.id===l.parent_id);
+  const newFull = parent ? `${parent.full_path||parent.name} / ${name}` : name;
+  try {
+    const { error } = await sb.from('locations').update({name, full_path:newFull}).eq('id', id);
+    if(error) throw error;
+    // Mettre à jour les chemins des enfants
+    const children = locations.filter(x=>x.parent_id===id);
+    for(const ch of children){
+      await sb.from('locations').update({full_path:`${newFull} / ${ch.name}`}).eq('id', ch.id);
+    }
+    toast(`✓ Emplacement renommé "${name}"`,'success');
+    closeModal();
+    await loadAll();
+    if(currentView==='settings') vSettings(document.getElementById('main-content'));
+    else vLocations(document.getElementById('main-content'));
+  } catch(e){ toast('Erreur: '+e.message,'error'); }
 }
 
 function openNewLoc() {
@@ -2265,6 +2595,31 @@ async function vSettings(c) {
       </table>
       <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
         Les fournisseurs ajoutés ici apparaissent automatiquement dans le menu déroulant à la création/modification d'un produit.
+      </div>
+    </div>
+
+    <!-- ── EMPLACEMENTS ── -->
+    <div class="table-card">
+      <div class="table-toolbar">
+        <div class="table-toolbar-title"><i class="ti ti-map-pin" style="color:var(--purple);margin-right:8px"></i>Emplacements</div>
+        <button class="btn btn-primary" onclick="openNewLoc()"><i class="ti ti-plus"></i> Ajouter</button>
+      </div>
+      <table>
+        <thead><tr><th>Nom</th><th>Chemin</th><th>Type</th><th>Zone de réception</th><th>Action</th></tr></thead>
+        <tbody>
+          ${locations.length ? locations.map(l => `<tr>
+              <td style="font-weight:500">${escHtml(l.name)}</td>
+              <td style="color:var(--text2);font-family:var(--font-mono);font-size:11px">${escHtml(l.full_path||'—')}</td>
+              <td><span class="badge badge-${l.usage==='internal'?'blue':'gray'}">${escHtml(l.usage||'—')}</span></td>
+              <td onclick="event.stopPropagation()">${renderRecvZoneToggle(l)}</td>
+              <td>
+                <button class="btn" style="height:28px;padding:0 10px;font-size:12px" onclick="openEditLoc(${l.id})"><i class="ti ti-pencil"></i> Renommer</button>
+              </td>
+            </tr>`).join('') : '<tr><td colspan="5" class="empty" style="padding:24px">Aucun emplacement</td></tr>'}
+        </tbody>
+      </table>
+      <div style="padding:12px 16px;font-size:11px;color:var(--text3);border-top:1px solid var(--border)">
+        Renomme un emplacement sans perdre son stock ni son historique. La <strong>zone de réception</strong> est l'emplacement où arrivent les factures avant d'être réparties — une réception qui y entre crée une tâche d'attribution dans Transfert.
       </div>
     </div>
 
