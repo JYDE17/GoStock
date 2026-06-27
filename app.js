@@ -580,33 +580,61 @@ function vLocations(c) {
       locVal[b.locId]=(locVal[b.locId]||0)+(b.qty*(p?.cost_price||0));
     });
   });
-  const internal=locations.filter(l=>l.usage==='internal');
+
+  // Agrégats incluant les descendants (roll-up) pour les conteneurs
+  const childrenOf={};
+  locations.forEach(l=>{ const pid=l.parent_id||0; (childrenOf[pid]=childrenOf[pid]||[]).push(l); });
+  Object.values(childrenOf).forEach(arr=>arr.sort((a,b)=>(a.name||'').localeCompare(b.name||'')));
+  function rollup(id){
+    let u=locTotals[id]||0, v=locVal[id]||0;
+    (childrenOf[id]||[]).forEach(ch=>{ const r=rollup(ch.id); u+=r.u; v+=r.v; });
+    return {u,v};
+  }
+
+  // Rendu récursif d'une ligne d'arbre
+  function renderNode(l, depth){
+    const kids=childrenOf[l.id]||[];
+    const hasKids=kids.length>0;
+    const own=Math.round(locTotals[l.id]||0);
+    const refs=locRefs[l.id]?.size||0;
+    const sub=hasKids?rollup(l.id):null;
+    const pad=depth*22;
+    const branch = depth>0 ? `<span style="color:var(--text3);font-family:var(--font-mono);margin-right:4px">${'│ '.repeat(Math.max(0,depth-1))}├─</span>` : '';
+    const icon = hasKids ? 'ti-folder' : 'ti-map-pin';
+    const iconColor = hasKids ? 'var(--amber)' : 'var(--blue)';
+    let row=`<div onclick="showLoc(${l.id})" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='transparent'">
+      <div style="flex:1;min-width:0;display:flex;align-items:center;padding-left:${pad}px">
+        ${branch}
+        <i class="ti ${icon}" style="color:${iconColor};margin-right:8px;font-size:16px;flex-shrink:0"></i>
+        <span style="font-weight:${hasKids?'600':'500'};font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(l.name)}</span>
+        ${hasKids?`<span style="font-size:11px;color:var(--text3);margin-left:8px;flex-shrink:0">(${kids.length})</span>`:''}
+      </div>
+      <div style="display:flex;gap:18px;align-items:center;flex-shrink:0">
+        <div style="text-align:right;min-width:70px">
+          <div style="font-family:var(--font-mono);color:var(--blue);font-size:13px">${own} u${hasKids&&sub.u!==own?` <span style="color:var(--text3);font-size:11px">/ ${Math.round(sub.u)}</span>`:''}</div>
+          <div style="font-size:10px;color:var(--text3)">${refs} réf.</div>
+        </div>
+        <div style="text-align:right;min-width:80px">
+          <div style="font-family:var(--font-mono);font-size:13px">${fmtCAD(hasKids?sub.v:(locVal[l.id]||0))}</div>
+        </div>
+        <button class="btn" style="height:28px;padding:0 8px;font-size:11px;flex-shrink:0" onclick="event.stopPropagation();openEditLoc(${l.id})" title="Renommer"><i class="ti ti-pencil"></i></button>
+      </div>
+    </div>`;
+    kids.forEach(ch=>{ row+=renderNode(ch, depth+1); });
+    return row;
+  }
+
+  const roots=(childrenOf[0]||[]).filter(l=>l.usage==='internal'||!l.usage);
+  const treeHtml=roots.map(r=>renderNode(r,0)).join('') || '<div style="padding:24px;color:var(--text3);text-align:center">Aucun emplacement.</div>';
+
   c.innerHTML=`
-  <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+    <div style="font-size:12px;color:var(--text3)"><i class="ti ti-folder" style="color:var(--amber)"></i> conteneur &nbsp; <i class="ti ti-map-pin" style="color:var(--blue)"></i> emplacement &nbsp;·&nbsp; <span style="font-family:var(--font-mono)">u</span> = unités sur l'emplacement <span style="font-family:var(--font-mono)">/ total</span> = avec sous-emplacements</div>
     <button class="btn btn-primary" onclick="openNewLoc()"><i class="ti ti-plus"></i> Nouvel emplacement</button>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
-    ${internal.map(l=>`<div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'" onclick="showLoc(${l.id})">
-      <div style="font-size:14px;font-weight:600;margin-bottom:4px"><i class="ti ti-map-pin" style="color:var(--blue);margin-right:6px"></i>${escHtml(l.name)}</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">${escHtml(l.full_path||'Emplacement interne')}</div>
-      <div style="font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:3px">
-        <div style="display:flex;justify-content:space-between"><span>${locRefs[l.id]?.size||0} références</span><span style="font-family:var(--font-mono);color:var(--blue)">${Math.round(locTotals[l.id]||0)} unités</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Valeur</span><span style="font-family:var(--font-mono)">${fmtCAD(locVal[l.id]||0)}</span></div>
-      </div>
-    </div>`).join('')||'<div style="color:var(--text3)">Aucun emplacement.</div>'}
-  </div>
-  <div class="table-card">
-    <div class="table-toolbar"><div class="table-toolbar-title">Tous les emplacements (${locations.length})</div></div>
-    <table><thead><tr><th>Nom</th><th>Chemin</th><th>Type</th><th>Références</th><th>Qté totale</th><th>Valeur</th></tr></thead>
-    <tbody>${locations.map(l=>`<tr onclick="showLoc(${l.id})">
-      <td style="font-weight:500">${escHtml(l.name)}</td>
-      <td class="mono" style="font-size:11px">${escHtml(l.full_path||'')}</td>
-      <td><span class="badge badge-${l.usage==='internal'?'blue':'gray'}">${l.usage}</span></td>
-      <td style="font-family:var(--font-mono)">${locRefs[l.id]?.size||0}</td>
-      <td style="font-family:var(--font-mono);color:var(--blue)">${Math.round(locTotals[l.id]||0)}</td>
-      <td style="font-family:var(--font-mono)">${fmtCAD(locVal[l.id]||0)}</td>
-    </tr>`).join('')}
-    </tbody></table>
+  <div class="table-card" style="overflow:hidden">
+    <div class="table-toolbar"><div class="table-toolbar-title"><i class="ti ti-sitemap" style="margin-right:6px;color:var(--blue)"></i>Arborescence des emplacements (${locations.length})</div></div>
+    <div style="overflow-x:auto">${treeHtml}</div>
   </div>`;
 }
 
@@ -2518,7 +2546,18 @@ async function vSettings(c) {
   c.innerHTML = `
   <div style="max-width:800px;display:flex;flex-direction:column;gap:20px">
 
+    <!-- ── NAV ONGLETS PARAMÈTRES ── -->
+    <div class="settings-tabs" style="position:sticky;top:0;z-index:20;background:var(--bg0);padding:4px 0 10px;border-bottom:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap">
+      <button class="set-tab active" data-target="sp-uoms"     onclick="settingsTab(this)"><i class="ti ti-ruler"></i> Unités</button>
+      <button class="set-tab"        data-target="sp-cats"     onclick="settingsTab(this)"><i class="ti ti-tag"></i> Catégories</button>
+      <button class="set-tab"        data-target="sp-sups"     onclick="settingsTab(this)"><i class="ti ti-truck"></i> Fournisseurs</button>
+      <button class="set-tab"        data-target="sp-locs"     onclick="settingsTab(this)"><i class="ti ti-map-pin"></i> Emplacements</button>
+      <button class="set-tab"        data-target="sp-threshold" onclick="settingsTab(this)"><i class="ti ti-bell"></i> Seuil</button>
+      <button class="set-tab"        data-target="sp-notifs"   onclick="settingsTab(this)"><i class="ti ti-mail"></i> Notifications</button>
+    </div>
+
     <!-- ── UNITÉS DE MESURE ── -->
+    <div class="settings-panel" id="sp-uoms">
     <div class="table-card">
       <div class="table-toolbar">
         <div class="table-toolbar-title"><i class="ti ti-ruler" style="color:var(--blue);margin-right:8px"></i>Unités de mesure</div>
@@ -2546,6 +2585,8 @@ async function vSettings(c) {
     </div>
 
     <!-- ── CATÉGORIES ── -->
+    </div>
+    <div class="settings-panel" id="sp-cats" style="display:none">
     <div class="table-card">
       <div class="table-toolbar">
         <div class="table-toolbar-title"><i class="ti ti-tag" style="color:var(--amber);margin-right:8px"></i>Catégories de produits</div>
@@ -2570,6 +2611,8 @@ async function vSettings(c) {
     </div>
 
     <!-- ── FOURNISSEURS ── -->
+    </div>
+    <div class="settings-panel" id="sp-sups" style="display:none">
     <div class="table-card">
       <div class="table-toolbar">
         <div class="table-toolbar-title"><i class="ti ti-truck" style="color:var(--green);margin-right:8px"></i>Fournisseurs</div>
@@ -2599,6 +2642,8 @@ async function vSettings(c) {
     </div>
 
     <!-- ── EMPLACEMENTS ── -->
+    </div>
+    <div class="settings-panel" id="sp-locs" style="display:none">
     <div class="table-card">
       <div class="table-toolbar">
         <div class="table-toolbar-title"><i class="ti ti-map-pin" style="color:var(--purple);margin-right:8px"></i>Emplacements</div>
@@ -2624,6 +2669,8 @@ async function vSettings(c) {
     </div>
 
     <!-- ── SEUIL D'ALERTE STOCK ── -->
+    </div>
+    <div class="settings-panel" id="sp-threshold" style="display:none">
     <div class="table-card" style="padding:20px 24px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
         <i class="ti ti-bell" style="font-size:20px;color:var(--amber)"></i>
@@ -2640,6 +2687,8 @@ async function vSettings(c) {
     </div>
 
     <!-- ── NOTIFICATIONS AUTOMATIQUES ── -->
+    </div>
+    <div class="settings-panel" id="sp-notifs" style="display:none">
     <div class="table-card">
       <div class="table-toolbar">
         <div class="table-toolbar-title"><i class="ti ti-mail" style="color:var(--purple);margin-right:8px"></i>Notifications automatiques</div>
@@ -2668,8 +2717,25 @@ async function vSettings(c) {
         Choisis le rapport, la fréquence (quotidien, hebdo, mensuel ou une date précise), l'heure et le ou les courriels (sépare-les par des virgules).
       </div>
     </div>
+    </div>
 
   </div>`;
+  applySettingsTab();
+}
+
+// Onglets de la page Paramètres
+function settingsTab(btn){
+  window._settingsTab = btn.getAttribute('data-target');
+  applySettingsTab();
+}
+function applySettingsTab(){
+  const target = window._settingsTab || 'sp-uoms';
+  document.querySelectorAll('.settings-panel').forEach(p=>{
+    p.style.display = (p.id===target) ? '' : 'none';
+  });
+  document.querySelectorAll('.set-tab').forEach(t=>{
+    t.classList.toggle('active', t.getAttribute('data-target')===target);
+  });
 }
 
 // ── NOTIFICATIONS AUTOMATIQUES ────────────────────────────
