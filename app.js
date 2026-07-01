@@ -72,6 +72,13 @@ async function doSignOut() {
   user=null; profile=null;
   document.getElementById('auth-wrap').classList.remove('hidden');
   document.getElementById('main-app').classList.add('hidden');
+  // Clear les champs auth pour éviter que le prochain user voit l'email/pw du précédent
+  const le = document.getElementById('l-email'); if(le) le.value = '';
+  const lp = document.getElementById('l-pw');    if(lp) lp.value = '';
+  const se = document.getElementById('s-name');  if(se) se.value = '';
+  const sn = document.getElementById('s-email'); if(sn) sn.value = '';
+  const sp = document.getElementById('s-pw');    if(sp) sp.value = '';
+  setAuthErr('');
 }
 async function onSignedIn(u) {
   user = u;
@@ -85,8 +92,6 @@ async function onSignedIn(u) {
 
   // Sidebar — Admin section
   document.getElementById('admin-nav').style.display = (isAdmin||isMgr) ? '' : 'none';
-  document.getElementById('dd-admin').style.display  = isAdmin ? '' : 'none';
-  document.getElementById('dd-migrate').style.display= isAdmin ? '' : 'none';
 
   // Pending inventories nav (manager + admin)
   const navPending = document.getElementById('nav-pending-inv');
@@ -5159,6 +5164,15 @@ function exportStepSupplier() {
 document.addEventListener('keydown',e=>{
   if(e.key==='F2'||(e.ctrlKey&&e.key==='b')){e.preventDefault();openBarcodeScanner(currentView);}
   if(e.key==='Escape'&&document.getElementById('bc-overlay').classList.contains('show')) closeBc();
+  // Empêche Backspace/Delete de déclencher le "retour en arrière" du navigateur
+  // quand le focus n'est pas dans un champ éditable (input/textarea/contenteditable).
+  if(e.key==='Backspace'||e.key==='Delete'){
+    const t = e.target;
+    const isEditable = t && (
+      t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable
+    );
+    if(!isEditable) e.preventDefault();
+  }
 });
 
 // ══════════════════════════════════════════════════════════

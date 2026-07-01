@@ -23,8 +23,8 @@
   --bg0:#1a1a1e;--bg1:#222228;--bg2:#2a2a32;--bg3:#32323c;
   --border:#3c3c48;--border2:#4a4a58;
   --text1:#f4f2ee;--text2:#9e9a92;--text3:#6a6660;
-  --accent:#c9a84c;--accent-dim:#3a2e14;--accent-bg:#26200c;
-  --accent2:#e8c96a;
+  --accent:#5b8bb0;--accent-dim:#16283a;--accent-bg:#101f2c;
+  --accent2:#8fb0cc;
   --blue:#5b9ef8;--blue-dim:#1e3060;--blue-bg:#141e38;
   --green:#34d368;--green-dim:#0a3a1a;
   --amber:#f0b429;--amber-dim:#382800;
@@ -38,7 +38,9 @@ html,body{height:100%;background:var(--bg0);color:var(--text1);font-family:var(-
 .app{display:flex;min-height:100vh}
 .hidden{display:none!important}
 /* SIDEBAR */
-.sidebar{width:232px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:sticky;top:0;height:100vh}
+.sidebar{width:232px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;position:sticky;top:0;height:100vh}
+.sidebar-scroll{flex:1;overflow-y:auto;min-height:0}
+.sidebar-footer{border-top:1px solid var(--border);flex-shrink:0;padding-top:4px}
 .logo{padding:16px 16px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--border)}
 .logo-icon{width:100%;display:flex;justify-content:center}
 .logo-icon img{width:100%;max-width:200px;height:auto;object-fit:contain;display:block}
@@ -111,7 +113,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 .badge-blue{background:var(--blue-dim);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
 .badge-gray{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
 .badge-purple{background:#1e1b4b;color:var(--purple);border:1px solid rgba(139,92,246,.2)}
-.badge-orange{background:var(--accent-bg);color:var(--accent);border:1px solid rgba(255,107,43,.2)}
+.badge-orange{background:var(--accent-bg);color:var(--accent);border:1px solid rgba(91,139,176,.3)}
 .empty{text-align:center;padding:40px;color:var(--text3)}
 .empty i{font-size:36px;margin-bottom:10px;display:block;opacity:.3}
 /* MODAL */
@@ -361,6 +363,7 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
 </div>
   </div>
 
+  <div class="sidebar-scroll">
   <div class="nav-group">
     <div class="nav-label" onclick="toggleNavGroup(this)">Tableau de bord<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
@@ -398,8 +401,9 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
       <div class="nav-item" onclick="openInventoryExport()"><i class="ti ti-download"></i>Inventaire CSV</div>
     </div>
   </div>
+  </div>
 
-  <div class="nav-group" id="admin-nav" style="display:none">
+  <div class="sidebar-footer nav-group" id="admin-nav" style="display:none">
     <div class="nav-label" onclick="toggleNavGroup(this)">Admin<i class="ti ti-chevron-down nav-chevron"></i></div>
     <div class="nav-group-items">
       <div class="nav-item" onclick="nav('users',this)"><i class="ti ti-users"></i>Utilisateurs</div>
@@ -428,8 +432,6 @@ td.mono{font-family:var(--font-mono);font-size:11px;color:var(--text2)}
           <div style="font-size:11px;color:var(--text3)" id="dd-email">—</div>
           <div style="margin-top:6px"><span class="role-badge" id="dd-role">—</span></div>
         </div>
-        <div class="user-dropdown-item" id="dd-admin" style="display:none" onclick="nav('users');toggleUserMenu()"><i class="ti ti-users"></i>Utilisateurs</div>
-        <div class="user-dropdown-item" id="dd-migrate" style="display:none" onclick="nav('settings');toggleUserMenu()"><i class="ti ti-settings"></i>Paramètres</div>
         <div class="user-dropdown-item" onclick="doSignOut()" style="color:var(--red)"><i class="ti ti-logout"></i>Se déconnecter</div>
       </div>
     </div>
